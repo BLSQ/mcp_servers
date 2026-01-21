@@ -58,7 +58,9 @@ http://localhost:8001/api/workspace/test/database/lk96bwqzm1jz2mpk/table/{table_
 
 Replace `{table_name}` with the actual table name from the database.
 
+### API ENDPOINT PATTERN:
 **Example fetch code:**
+Always set by default limit to 10000.
 ```javascript
 // Fetch data from OpenHEXA API
 const API_BASE = '$BROWSER_API_URL';
@@ -66,7 +68,7 @@ const WORKSPACE = '$HEXA_WORKSPACE';
 const DATABASE = '${WORKSPACE_DATABASE_DB_NAME:-$HEXA_WORKSPACE}';
 
 async function fetchTableData(tableName) {
-    const url = \\\`\\\${API_BASE}/api/workspace/\\\${WORKSPACE}/database/\\\${DATABASE}/table/\\\${tableName}/\\\`;
+    const url = \\\`\\\${API_BASE}/api/workspace/\\\${WORKSPACE}/database/\\\${DATABASE}/table/\\\${tableName}/?limit=10000\\\`;
     const response = await fetch(url, {
         credentials: 'include'  // Use cookies for authentication
     });
@@ -96,6 +98,7 @@ The API returns JSON with this structure:
 ## Important Notes
 
 - Use `credentials: 'include'` for cookie-based authentication (no TOKEN header needed)
+- Always set the limit to 10000
 - The API returns JSON data that you can use directly in ECharts
 - If creating map visualizations, check for lat/lon/geolocation columns
 - For world maps, use: "https://cdn.jsdelivr.net/npm/echarts-map@3.0.1/json/world.json"
