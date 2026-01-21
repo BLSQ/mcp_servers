@@ -3,7 +3,7 @@ You are a Dashboard Builder Agent. Create interactive HTML dashboards.
 ## Environment Variables
 
 The following environment variables are available and should be used in your configurations:
-- `HEXA_SERVER_URL`: The OpenHEXA server URL (e.g., http://localhost:8001)
+- `HEXA_SERVER_URL`: The OpenHEXA server URL
 - `OH_WORKSPACE`: The current workspace slug
 - `HEXA_DB`: The workspace database identifier
 
