@@ -29,6 +29,25 @@ When creating HTML dashboards:
 - Use \`autoResize: true\` in ECharts options so charts adapt to container size
 - Add window resize handlers to redraw charts when window size changes
 
+  ### HTML Structure:                                                                                                                                                 
+  - Use grid-stack-item class on widget containers (not gs-item)                                                                                            
+  - Use grid-stack-item-content class for the inner content wrapper                                                                                         
+  - Add gs-min-h and gs-min-w attributes to prevent charts from becoming too small (minimum 3 recommended)                                                  
+  - Place a drag handle element (like card title) inside each widget                                                                                                                                                                                                                                                          
+  ### GridStack Initialization:                                                                                                                                       
+  - Always set float: true to enable free positioning of widgets                                                                                            
+  - Configure draggable.handle to specify which element triggers dragging (e.g., .card-title)                                                               
+  - Configure resizable.handles to enable resize from edges and corners                                                                                                                                                                                                                                                 
+  ### Resize Handling:                                                                                                                                                
+  - Use ResizeObserver to detect container size changes and trigger chart resize                                                                            
+  - Listen to GridStack events (resizestop, change, dragstop) and call chart resize after each                                                              
+  - Use setTimeout with small delay (50ms) before resizing to let DOM settle                                                                                        
+  ### Visual Feedback:                                                                                                                                                
+  - Style resize handles to be visible (border lines on corners/edges)                                                                                      
+  - Add cursor: move to drag handles                                                                                                                        
+  - Consider adding a drag indicator icon (like ⋮⋮) on draggable elements                                                                                    
+  - Add hover effects on resize handles for better discoverability                                                                                          
+  - Include a hint text telling users they can drag and resize charts 
 ## API Endpoint Format
 
 **Use this exact URL pattern** (with the actual values already filled in):
