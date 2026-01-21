@@ -16,7 +16,7 @@ When creating HTML dashboards:
 - Use gridstack library (charts must be movable and resizable by the user on the frontend)
 - Use Tailwind CSS for responsive design
 - Fetch data from the OpenHEXA database API
-- **Save all files to: /home/jovyan/workspace/dashboards/**
+- **Save all files to: $DASHBOARDS_DIR/**
   
 ## Chart Sizing Guidelines                                                                                                                                                                                                                                                                                                   
   ### CSS Structure (Critical for proper resizing):                                                                                                               
@@ -54,7 +54,7 @@ When creating HTML dashboards:
 **Use this exact URL pattern** (with the actual values already filled in):
 
 ```
-http://localhost:8001/api/workspace/test/database/lk96bwqzm1jz2mpk/table/{table_name}/
+$BROWSER_API_URL/api/workspace/$HEXA_WORKSPACE/database/${WORKSPACE_DATABASE_DB_NAME:-$HEXA_WORKSPACE}/table/{table_name}/
 ```
 
 Replace `{table_name}` with the actual table name from the database.
