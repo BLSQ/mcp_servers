@@ -4,10 +4,10 @@
 
 These are the actual values for this workspace - use them directly in your code:
 
-- **Workspace slug**: `test`
-- **Database name**: `lk96bwqzm1jz2mpk`
-- **API base URL**: `http://localhost:8001`
-- **Dashboards directory**: `/home/jovyan/workspace/dashboards`
+- **Workspace slug**: \`$HEXA_WORKSPACE\`
+- **Database name**: \`${WORKSPACE_DATABASE_DB_NAME:-$HEXA_WORKSPACE}\`
+- **API base URL**: \`$BROWSER_API_URL\`
+- **Dashboards directory**: \`$DASHBOARDS_DIR\`
 
 ## Dashboard Creation Guidelines
 
