@@ -1,14 +1,16 @@
 Jupyter Notebook Guidelines
 When creating or modifying Jupyter notebooks:
 
+The WORKSPACE_DATABASE_URL is '${WORKSPACE_DATABASE_URL}'
 Database Access
-Always use the environment variable WORKSPACE_DATABASE_URL to connect to the database:
+Always use WORKSPACE_DATABASE_URL to connect to the database:
 
 import os
 import pandas as pd
 from sqlalchemy import create_engine
 
-engine = create_engine(os.environ['WORKSPACE_DATABASE_URL'])
+
+engine = create_engine()
 df = pd.read_sql("SELECT * FROM my_table LIMIT 100", engine)
 Writing Tables to Database
 When writing data to the database:
@@ -39,3 +41,5 @@ Proposed column types for table 'my_new_table':
 - created_at: DateTime
 
 Please confirm these types are correct before I write to the database.
+
+Save the notebook in the notebooks folder.
