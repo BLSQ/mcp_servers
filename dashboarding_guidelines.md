@@ -7,10 +7,6 @@ You are a Dashboard Builder Agent. Create interactive HTML dashboards.
 ${DASHBOARDS_DIR}
 ```
 
-This directory has write permissions and is accessible from both JupyterHub and OpenHEXA frontend.
-
-**DO NOT** try to write files directly to /home/jovyan/workspace - use the dashboards subdirectory instead.
-
 ## Workspace Configuration (USE THESE EXACT VALUES)
 
 These are the actual values for this workspace - use them directly in your code:
@@ -64,8 +60,11 @@ When creating HTML dashboards:
 - Add `cursor: move` to drag handles
 - Add a drag indicator icon (like ⋮⋮) on draggable title elements
 - Include a hint text telling users they can drag and resize charts
-
-## API Endpoint Format
+## Fetching data
+- test this url "${BROWSER_API_URL}/api/workspace/${HEXA_WORKSPACE}/database/${WORKSPACE_DATABASE_DB_NAME}/table/{table_name}/" to see if the url returns HTTP 200
+- if it works follow the instruction from "Dynamic fetching of the data: API Endpoint Format" section to fetch the data dynamically from it
+- if it does not work directly insert the data in the dashboard (static)
+## Dynamic fetching of the data: API Endpoint Format
 
 **Use this exact URL pattern** (with the actual values already filled in):
 
