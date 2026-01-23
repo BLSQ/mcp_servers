@@ -224,16 +224,28 @@ def list_workspace_members(workspace_slug: str) -> dict:
         return {"error": str(e)}
 
 
-def _create_pipeline_zipfile(code_content: str) -> str:
+def _create_pipeline_zipfile(
+    code_content: str,
+    requirements_txt: str | None = None,
+    util_files: dict[str, str] | None = None,
+) -> str:
     """
-    Create a base64-encoded ZIP file containing pipeline code.
+    Create a base64-encoded ZIP file containing pipeline code and optional files.
 
     The ZIP should have this structure:
     pipeline.zip
-    └── pipeline.py  (contains the code_content)
+    ├── pipeline.py      (contains the code_content - required, main entry point)
+    ├── requirements.txt (contains library dependencies - optional)
+    ├── utils.py         (utility module - optional)
+    ├── helpers.py       (another utility module - optional)
+    └── ...              (any additional .py files)
 
     Args:
-        code_content: Python code as string
+        code_content: Python code as string for pipeline.py (main entry point)
+        requirements_txt: Optional requirements.txt content specifying library dependencies.
+                         Format: one package per line, e.g., "pandas==2.0.0"
+        util_files: Optional dict mapping filename to content for additional Python files.
+                   Example: {"utils.py": "def helper(): ...", "config.py": "API_KEY = ..."}
 
     Returns:
         Base64-encoded ZIP file string
@@ -241,7 +253,20 @@ def _create_pipeline_zipfile(code_content: str) -> str:
     # Create in-memory ZIP
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        # Main pipeline file (required)
         zip_file.writestr("pipeline.py", code_content)
+
+        # Requirements file (optional)
+        if requirements_txt:
+            zip_file.writestr("requirements.txt", requirements_txt)
+
+        # Additional utility files (optional)
+        if util_files:
+            for filename, content in util_files.items():
+                # Ensure .py extension and prevent overwriting pipeline.py
+                if filename == "pipeline.py":
+                    continue  # Skip, pipeline.py is already added
+                zip_file.writestr(filename, content)
 
     # Get ZIP bytes and encode to base64
     zip_bytes = zip_buffer.getvalue()
@@ -256,6 +281,8 @@ def create_pipeline(
     description: str | None = None,
     functional_type: str | None = None,
     tags: list[str] | None = None,
+    requirements_txt: str | None = None,
+    util_files: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     Create a new pipeline with code in a workspace.
@@ -263,10 +290,15 @@ def create_pipeline(
     Args:
         workspace_slug: The workspace slug where to create the pipeline
         name: Pipeline name (code will be auto-generated from this)
-        code_content: Python code for the pipeline (will be packaged as ZIP)
+        code_content: Python code for pipeline.py (main entry point, will be packaged as ZIP)
         description: Optional pipeline description
         functional_type: Optional type: extraction, transformation, loading, or computation
         tags: Optional list of tags
+        requirements_txt: Optional requirements.txt content specifying library dependencies.
+                         One package per line, e.g., "pandas==2.0.0" or "requests>=2.28.0"
+        util_files: Optional dict of additional Python files to include in the pipeline.
+                   Keys are filenames (e.g., "utils.py"), values are file contents.
+                   Example: {"utils.py": "def helper(): ...", "config.py": "API_URL = ..."}
 
     Returns:
         Dict containing the created pipeline details and upload status
@@ -327,9 +359,9 @@ def create_pipeline(
 
         pipeline_code = pipeline["code"]
 
-        # Step 2: Package code into ZIP
+        # Step 2: Package code into ZIP (with optional requirements.txt and util files)
         try:
-            zipfile_b64 = _create_pipeline_zipfile(code_content)
+            zipfile_b64 = _create_pipeline_zipfile(code_content, requirements_txt, util_files)
         except Exception as e:
             return {
                 "error": f"Failed to create ZIP file: {str(e)}",
@@ -395,6 +427,8 @@ def upload_pipeline_version(
     version_name: str | None = None,
     description: str | None = None,
     external_link: str | None = None,
+    requirements_txt: str | None = None,
+    util_files: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     Upload a new version to an existing pipeline.
@@ -405,10 +439,15 @@ def upload_pipeline_version(
     Args:
         workspace_slug: The workspace slug where the pipeline exists
         pipeline_code: The code identifier of the existing pipeline to update
-        code_content: Python code for the new version (will be packaged as ZIP)
+        code_content: Python code for pipeline.py (main entry point, will be packaged as ZIP)
         version_name: Optional name for this version (e.g., "v2.0", "bugfix-auth")
         description: Optional description of changes in this version
         external_link: Optional URL to external documentation or repository
+        requirements_txt: Optional requirements.txt content specifying library dependencies.
+                         One package per line, e.g., "pandas==2.0.0" or "requests>=2.28.0"
+        util_files: Optional dict of additional Python files to include in the pipeline.
+                   Keys are filenames (e.g., "utils.py"), values are file contents.
+                   Example: {"utils.py": "def helper(): ...", "config.py": "API_URL = ..."}
 
     Returns:
         Dict containing the uploaded pipeline version details
@@ -421,9 +460,9 @@ def upload_pipeline_version(
         if not workspace_slug or not pipeline_code or not code_content:
             return {"error": "workspace_slug, pipeline_code, and code_content are required"}
 
-        # Package code into ZIP
+        # Package code into ZIP (with optional requirements.txt and util files)
         try:
-            zipfile_b64 = _create_pipeline_zipfile(code_content)
+            zipfile_b64 = _create_pipeline_zipfile(code_content, requirements_txt, util_files)
         except Exception as e:
             return {"error": f"Failed to create ZIP file: {str(e)}"}
 
@@ -495,8 +534,7 @@ def upload_pipeline_version(
                 )
             elif "DUPLICATE_PIPELINE_VERSION_NAME" in errors:
                 error_msg += (
-                    f"\nVersion name '{version_name}' already exists. "
-                    "Choose a different name."
+                    f"\nVersion name '{version_name}' already exists. Choose a different name."
                 )
 
             return {"error": error_msg}
@@ -1104,9 +1142,7 @@ def list_pipeline_templates(
         Dict containing templates and pagination information
     """
     if not OPENHEXA_AVAILABLE:
-        return {
-            "error": "OpenHEXA SDK not available. Please configure credentials."
-        }
+        return {"error": "OpenHEXA SDK not available. Please configure credentials."}
 
     try:
         query = """
@@ -1220,9 +1256,7 @@ def get_pipeline_template_by_code(template_code: str) -> dict[str, Any]:
         - template.organization, workspace, tags
     """
     if not OPENHEXA_AVAILABLE:
-        return {
-            "error": "OpenHEXA SDK not available. Please configure credentials."
-        }
+        return {"error": "OpenHEXA SDK not available. Please configure credentials."}
 
     try:
         query = """
@@ -1326,9 +1360,7 @@ def get_pipeline_template_version(version_id: str) -> dict[str, Any]:
             - files[].type ("file" or "directory")
     """
     if not OPENHEXA_AVAILABLE:
-        return {
-            "error": "OpenHEXA SDK not available. Please configure credentials."
-        }
+        return {"error": "OpenHEXA SDK not available. Please configure credentials."}
 
     try:
         query = """
@@ -1430,9 +1462,7 @@ def create_pipeline_from_template(
         - pipeline.sourceTemplate (reference to original template)
     """
     if not OPENHEXA_AVAILABLE:
-        return {
-            "error": "OpenHEXA SDK not available. Please configure credentials."
-        }
+        return {"error": "OpenHEXA SDK not available. Please configure credentials."}
 
     try:
         mutation = """
@@ -1480,9 +1510,7 @@ def create_pipeline_from_template(
         if "errors" in response_data:
             return {"error": f"GraphQL error: {response_data['errors']}"}
 
-        create_result = response_data.get("data", {}).get(
-            "createPipelineFromTemplateVersion", {}
-        )
+        create_result = response_data.get("data", {}).get("createPipelineFromTemplateVersion", {})
 
         if not create_result.get("success"):
             errors = create_result.get("errors", [])
