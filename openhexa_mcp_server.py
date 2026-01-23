@@ -1540,6 +1540,224 @@ def create_pipeline_from_template(
         return {"error": f"Failed to create pipeline from template: {str(e)}"}
 
 
+# =============================================================================
+# Pipeline Scheduling Tools
+# =============================================================================
+
+
+@mcp.tool
+def schedule_pipeline(
+    pipeline_id: str,
+    cron_expression: str | None = None,
+    enabled: bool = True,
+) -> dict[str, Any]:
+    """
+    Schedule a pipeline to run automatically using a CRON expression.
+
+    This tool allows you to enable, update, or disable automatic scheduling for a pipeline.
+    The pipeline must be "schedulable" - meaning all required parameters must have default
+    values or be configured in the pipeline's config.
+
+    CRON FORMAT: minute hour day-of-month month day-of-week
+    Examples:
+    - "0 * * * *"      -> Every hour at minute 0
+    - "0 0 * * *"      -> Every day at midnight
+    - "0 6 * * 1"      -> Every Monday at 6:00 AM
+    - "0 */4 * * *"    -> Every 4 hours
+    - "30 8 * * 1-5"   -> Weekdays at 8:30 AM
+    - "0 0 1 * *"      -> First day of each month at midnight
+
+    Args:
+        pipeline_id: The UUID of the pipeline to schedule
+        cron_expression: CRON expression for the schedule. Set to None or empty to disable.
+        enabled: If False, disables the schedule (equivalent to cron_expression=None)
+
+    Returns:
+        Dict containing:
+        - success: True/False
+        - pipeline: Updated pipeline with schedule info
+        - message: Description of what was done
+    """
+    if not OPENHEXA_AVAILABLE:
+        return {"error": "OpenHEXA SDK not available. Please configure credentials."}
+
+    try:
+        # If disabled or no cron expression, we're disabling the schedule
+        schedule_value = cron_expression if enabled and cron_expression else None
+
+        mutation = """
+        mutation updatePipelineSchedule($input: UpdatePipelineInput!) {
+            updatePipeline(input: $input) {
+                success
+                errors
+                pipeline {
+                    id
+                    name
+                    code
+                    schedule
+                    currentVersion {
+                        id
+                        versionNumber
+                        isSchedulable
+                        parameters {
+                            code
+                            name
+                            type
+                            required
+                            default
+                        }
+                    }
+                    workspace {
+                        slug
+                        name
+                    }
+                }
+            }
+        }
+        """
+
+        variables = {
+            "input": {
+                "id": pipeline_id,
+                "schedule": schedule_value,
+            }
+        }
+
+        result = openhexa.execute(query=mutation, variables=variables)
+        response_data = result.json()
+
+        if "errors" in response_data:
+            return {"error": f"GraphQL error: {response_data['errors']}"}
+
+        update_result = response_data.get("data", {}).get("updatePipeline", {})
+
+        if not update_result.get("success"):
+            errors = update_result.get("errors", [])
+            error_msg = f"Failed to update pipeline schedule: {errors}"
+
+            if "PERMISSION_DENIED" in errors:
+                error_msg += "\nYou don't have permission to schedule this pipeline."
+            elif "NOT_FOUND" in errors:
+                error_msg += f"\nPipeline '{pipeline_id}' not found."
+            elif "MISSING_VERSION_CONFIG" in errors:
+                error_msg += (
+                    "\nPipeline is not schedulable. All required parameters must have "
+                    "default values or be configured. Check pipeline parameters."
+                )
+
+            return {"error": error_msg}
+
+        pipeline = update_result.get("pipeline")
+        pipeline_name = pipeline.get("name", pipeline_id)
+
+        if schedule_value:
+            message = f"Pipeline '{pipeline_name}' scheduled with CRON: {schedule_value}"
+        else:
+            message = f"Pipeline '{pipeline_name}' schedule disabled"
+
+        return {
+            "success": True,
+            "pipeline": pipeline,
+            "schedule": schedule_value,
+            "message": message,
+        }
+
+    except Exception as e:
+        return {"error": "Failed to schedule pipeline: " + str(e)}
+
+
+@mcp.tool
+def get_pipeline_schedule(
+    workspace_slug: str,
+    pipeline_code: str,
+) -> dict[str, Any]:
+    """Get the current schedule configuration of a pipeline.
+
+    Use this to check if a pipeline is scheduled and what its CRON expression is.
+
+    Args:
+        workspace_slug: The workspace slug where the pipeline exists
+        pipeline_code: The code identifier of the pipeline
+
+    Returns:
+        Dict containing:
+        - pipeline_id, name, code
+        - schedule: Current CRON expression (null if not scheduled)
+        - is_schedulable: Whether the pipeline can be scheduled
+        - parameters: List of pipeline parameters (to understand scheduling requirements)
+    """
+    if not OPENHEXA_AVAILABLE:
+        return {"error": "OpenHEXA SDK not available. Please configure credentials."}
+
+    try:
+        query = """
+        query getPipelineSchedule($workspaceSlug: String!, $code: String!) {
+            pipelineByCode(workspaceSlug: $workspaceSlug, code: $code) {
+                id
+                name
+                code
+                schedule
+                currentVersion {
+                    id
+                    versionNumber
+                    isSchedulable
+                    parameters {
+                        code
+                        name
+                        type
+                        required
+                        default
+                        help
+                    }
+                }
+                permissions {
+                    schedule
+                    update
+                }
+                workspace {
+                    slug
+                    name
+                }
+            }
+        }
+        """
+
+        variables = {
+            "workspaceSlug": workspace_slug,
+            "code": pipeline_code,
+        }
+
+        result = openhexa.execute(query=query, variables=variables)
+        response_data = result.json()
+
+        if "errors" in response_data:
+            return {"error": f"GraphQL error: {response_data['errors']}"}
+
+        pipeline = response_data.get("data", {}).get("pipelineByCode")
+
+        if not pipeline:
+            return {
+                "error": f"Pipeline '{pipeline_code}' not found in workspace '{workspace_slug}'"
+            }
+
+        current_version = pipeline.get("currentVersion", {})
+
+        return {
+            "pipeline_id": pipeline.get("id"),
+            "name": pipeline.get("name"),
+            "code": pipeline.get("code"),
+            "schedule": pipeline.get("schedule"),
+            "is_scheduled": pipeline.get("schedule") is not None,
+            "is_schedulable": current_version.get("isSchedulable", False),
+            "parameters": current_version.get("parameters", []),
+            "can_schedule": pipeline.get("permissions", {}).get("schedule", False),
+            "workspace": pipeline.get("workspace"),
+        }
+
+    except Exception as e:
+        return {"error": "Failed to get pipeline schedule: " + str(e)}
+
+
 def main():
     """Main entry point for the MCP OpenHEXA server."""
     # Check for required environment variables or configuration
