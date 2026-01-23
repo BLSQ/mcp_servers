@@ -1057,6 +1057,461 @@ def preview_dataset_file(file_id: str) -> dict:
         return {"error": f"Failed to preview file: {str(e)}"}
 
 
+# =============================================================================
+# Pipeline Templates Tools
+# =============================================================================
+
+
+@mcp.tool
+def list_pipeline_templates(
+    page: int = 1,
+    per_page: int = 15,
+    search: str | None = None,
+    functional_type: str | None = None,
+    is_validated: bool | None = None,
+    tags: list[str] | None = None,
+    order_by: str | None = None,
+) -> dict[str, Any]:
+    """
+    List all available pipeline templates (START HERE for templates).
+
+    Pipeline templates are reusable pipeline blueprints that can be used to create
+    new pipelines. Templates are public and available across all workspaces.
+
+    WORKFLOW:
+    1. list_pipeline_templates() -> Get template list with names, descriptions, codes
+    2. get_pipeline_template_by_code(code) -> Get detailed template info + version IDs
+    3. get_pipeline_template_version(version_id) -> Get actual source code (files)
+    4. create_pipeline_from_template(workspace, version_id) -> Create pipeline
+
+    Returns for each template:
+    - id, name, code, description, functionalType
+    - currentVersion.id (use this with get_pipeline_template_version to get code)
+    - tags, organization, pipelinesCount
+
+    Args:
+        page: Page number (default: 1)
+        per_page: Number of templates per page (default: 15)
+        search: Optional search string to filter templates by name/description
+        functional_type: Optional filter by type: extraction, transformation,
+                        loading, or computation
+        is_validated: Optional filter for validated/official templates only
+        tags: Optional list of tags to filter by
+        order_by: Optional ordering: PIPELINES_COUNT_DESC, PIPELINES_COUNT_ASC,
+                 NAME_DESC, NAME_ASC, CREATED_AT_DESC, CREATED_AT_ASC
+
+    Returns:
+        Dict containing templates and pagination information
+    """
+    if not OPENHEXA_AVAILABLE:
+        return {
+            "error": "OpenHEXA SDK not available. Please configure credentials."
+        }
+
+    try:
+        query = """
+        query listPipelineTemplates(
+            $page: Int,
+            $perPage: Int,
+            $search: String,
+            $functionalType: PipelineFunctionalType,
+            $isValidated: Boolean,
+            $tags: [String!],
+            $orderBy: PipelineTemplateOrderBy
+        ) {
+            pipelineTemplates(
+                page: $page,
+                perPage: $perPage,
+                search: $search,
+                functionalType: $functionalType,
+                isValidated: $isValidated,
+                tags: $tags,
+                orderBy: $orderBy
+            ) {
+                pageNumber
+                totalPages
+                totalItems
+                items {
+                    id
+                    name
+                    code
+                    description
+                    functionalType
+                    pipelinesCount
+                    validatedAt
+                    updatedAt
+                    tags {
+                        id
+                        name
+                    }
+                    organization {
+                        id
+                        name
+                    }
+                    currentVersion {
+                        id
+                        versionNumber
+                        changelog
+                        createdAt
+                    }
+                    permissions {
+                        delete
+                        update
+                    }
+                }
+            }
+        }
+        """
+
+        variables: dict[str, Any] = {
+            "page": page,
+            "perPage": per_page,
+        }
+
+        if search:
+            variables["search"] = search
+        if functional_type:
+            variables["functionalType"] = functional_type.upper()
+        if is_validated is not None:
+            variables["isValidated"] = is_validated
+        if tags:
+            variables["tags"] = tags
+        if order_by:
+            variables["orderBy"] = order_by
+
+        result = openhexa.execute(query=query, variables=variables)
+        response_data = result.json()
+
+        if "errors" in response_data:
+            return {"error": f"GraphQL error: {response_data['errors']}"}
+
+        templates_data = response_data.get("data", {}).get("pipelineTemplates", {})
+
+        return {
+            "templates": templates_data.get("items", []),
+            "total_pages": templates_data.get("totalPages", 0),
+            "total_items": templates_data.get("totalItems", 0),
+            "current_page": templates_data.get("pageNumber", page),
+            "per_page": per_page,
+            "count": len(templates_data.get("items", [])),
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to list pipeline templates: {str(e)}"}
+
+
+@mcp.tool
+def get_pipeline_template_by_code(template_code: str) -> dict[str, Any]:
+    """
+    Get detailed information about a specific pipeline template.
+
+    Use this after list_pipeline_templates() to get more details about a template
+    you're interested in. Returns version history and currentVersion.id which
+    you can use with get_pipeline_template_version() to see the actual code.
+
+    Args:
+        template_code: The unique code identifier of the template (from list_pipeline_templates)
+
+    Returns:
+        Dict containing:
+        - template.description, config, functionalType
+        - template.currentVersion.id (use with get_pipeline_template_version for code)
+        - template.versions[] (list of all versions with their IDs)
+        - template.organization, workspace, tags
+    """
+    if not OPENHEXA_AVAILABLE:
+        return {
+            "error": "OpenHEXA SDK not available. Please configure credentials."
+        }
+
+    try:
+        query = """
+        query getTemplateByCode($code: String!) {
+            templateByCode(code: $code) {
+                id
+                name
+                code
+                description
+                config
+                functionalType
+                pipelinesCount
+                validatedAt
+                updatedAt
+                tags {
+                    id
+                    name
+                }
+                organization {
+                    id
+                    name
+                }
+                workspace {
+                    slug
+                    name
+                }
+                currentVersion {
+                    id
+                    versionNumber
+                    changelog
+                    createdAt
+                    isLatestVersion
+                    user {
+                        id
+                        displayName
+                        email
+                    }
+                    sourcePipelineVersion {
+                        id
+                        versionName
+                    }
+                }
+                versions(page: 1, perPage: 10) {
+                    totalItems
+                    items {
+                        id
+                        versionNumber
+                        changelog
+                        createdAt
+                    }
+                }
+                permissions {
+                    delete
+                    update
+                }
+            }
+        }
+        """
+
+        variables = {"code": template_code}
+
+        result = openhexa.execute(query=query, variables=variables)
+        response_data = result.json()
+
+        if "errors" in response_data:
+            return {"error": f"GraphQL error: {response_data['errors']}"}
+
+        template = response_data.get("data", {}).get("templateByCode")
+
+        if not template:
+            return {"error": f"Template with code '{template_code}' not found"}
+
+        return {"template": template}
+
+    except Exception as e:
+        return {"error": f"Failed to get template: {str(e)}"}
+
+
+@mcp.tool
+def get_pipeline_template_version(version_id: str) -> dict[str, Any]:
+    """
+    Get the actual source code of a pipeline template version.
+
+    THIS IS THE TOOL TO USE TO SEE THE PIPELINE CODE.
+
+    Use after list_pipeline_templates() or get_pipeline_template_by_code() to retrieve
+    the actual Python source code files of a template.
+
+    Args:
+        version_id: The UUID of the template version (from currentVersion.id or versions[].id)
+
+    Returns:
+        Dict containing:
+        - version.template (name, code, description)
+        - version.sourcePipelineVersion.parameters[] (pipeline parameters with types/defaults)
+        - version.sourcePipelineVersion.files[] - THE ACTUAL CODE:
+            - files[].name (e.g., "pipeline.py")
+            - files[].path (e.g., "pipeline.py")
+            - files[].content (THE PYTHON SOURCE CODE - decoded, readable)
+            - files[].language (e.g., "python")
+            - files[].type ("file" or "directory")
+    """
+    if not OPENHEXA_AVAILABLE:
+        return {
+            "error": "OpenHEXA SDK not available. Please configure credentials."
+        }
+
+    try:
+        query = """
+        query getTemplateVersion($id: UUID!) {
+            pipelineTemplateVersion(id: $id) {
+                id
+                versionNumber
+                changelog
+                createdAt
+                isLatestVersion
+                user {
+                    id
+                    displayName
+                    email
+                }
+                template {
+                    id
+                    name
+                    code
+                    description
+                    functionalType
+                }
+                sourcePipelineVersion {
+                    id
+                    versionName
+                    versionNumber
+                    description
+                    parameters {
+                        code
+                        name
+                        type
+                        required
+                        default
+                        help
+                    }
+                    files {
+                        id
+                        name
+                        path
+                        type
+                        content
+                        language
+                        lineCount
+                        autoSelect
+                    }
+                }
+                permissions {
+                    update
+                    delete
+                }
+            }
+        }
+        """
+
+        variables = {"id": version_id}
+
+        result = openhexa.execute(query=query, variables=variables)
+        response_data = result.json()
+
+        if "errors" in response_data:
+            return {"error": f"GraphQL error: {response_data['errors']}"}
+
+        version = response_data.get("data", {}).get("pipelineTemplateVersion")
+
+        if not version:
+            return {"error": f"Template version '{version_id}' not found"}
+
+        return {"version": version}
+
+    except Exception as e:
+        return {"error": f"Failed to get template version: {str(e)}"}
+
+
+@mcp.tool
+def create_pipeline_from_template(
+    workspace_slug: str,
+    template_version_id: str,
+) -> dict[str, Any]:
+    """
+    Create a new pipeline in your workspace from a template.
+
+    This is the final step in the template workflow - it copies the template's
+    code into a new pipeline in your workspace that you can then run or modify.
+
+    WORKFLOW REMINDER:
+    1. list_pipeline_templates() -> find template
+    2. get_pipeline_template_version(currentVersion.id) -> review code
+    3. create_pipeline_from_template(workspace, version_id) -> CREATE IT
+
+    Args:
+        workspace_slug: The workspace slug where to create the pipeline
+        template_version_id: The UUID of the template version (from currentVersion.id)
+
+    Returns:
+        Dict containing:
+        - success: True/False
+        - pipeline.id, pipeline.name, pipeline.code
+        - pipeline.currentVersion (the created version)
+        - pipeline.sourceTemplate (reference to original template)
+    """
+    if not OPENHEXA_AVAILABLE:
+        return {
+            "error": "OpenHEXA SDK not available. Please configure credentials."
+        }
+
+    try:
+        mutation = """
+        mutation createPipelineFromTemplate(
+            $input: CreatePipelineFromTemplateVersionInput!
+        ) {
+            createPipelineFromTemplateVersion(input: $input) {
+                success
+                errors
+                pipeline {
+                    id
+                    name
+                    code
+                    type
+                    description
+                    workspace {
+                        slug
+                        name
+                    }
+                    sourceTemplate {
+                        id
+                        name
+                        code
+                    }
+                    currentVersion {
+                        id
+                        versionNumber
+                        versionName
+                    }
+                }
+            }
+        }
+        """
+
+        variables = {
+            "input": {
+                "workspaceSlug": workspace_slug,
+                "pipelineTemplateVersionId": template_version_id,
+            }
+        }
+
+        result = openhexa.execute(query=mutation, variables=variables)
+        response_data = result.json()
+
+        if "errors" in response_data:
+            return {"error": f"GraphQL error: {response_data['errors']}"}
+
+        create_result = response_data.get("data", {}).get(
+            "createPipelineFromTemplateVersion", {}
+        )
+
+        if not create_result.get("success"):
+            errors = create_result.get("errors", [])
+            error_msg = f"Failed to create pipeline from template: {errors}"
+
+            if "PERMISSION_DENIED" in errors:
+                error_msg += "\nYou don't have permission to create pipelines."
+            elif "WORKSPACE_NOT_FOUND" in errors:
+                error_msg += f"\nWorkspace '{workspace_slug}' not found."
+            elif "PIPELINE_TEMPLATE_VERSION_NOT_FOUND" in errors:
+                error_msg += f"\nTemplate version '{template_version_id}' not found."
+
+            return {"error": error_msg}
+
+        pipeline = create_result.get("pipeline")
+
+        return {
+            "success": True,
+            "pipeline": pipeline,
+            "message": (
+                f"Pipeline '{pipeline.get('name')}' created successfully "
+                f"from template in workspace '{workspace_slug}'"
+            ),
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to create pipeline from template: {str(e)}"}
+
+
 def main():
     """Main entry point for the MCP OpenHEXA server."""
     # Check for required environment variables or configuration
