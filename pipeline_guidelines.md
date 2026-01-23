@@ -17,3 +17,7 @@ Write a pipeline by designing first:
 - the outputs (save a file/ save a table in the database/ save a dataset and add a file)
 - Insert logs (current_run.log_info)
 - Think about error_handling as well
+
+Creating a new pipeline or uploading a new version of a pipeline:
+- in the zipped files, you can include different file but the main code must be named pipeline.py
+- in the zipped files, you can include a requirements.txt where you can set some requirement libraries and with the correct version
