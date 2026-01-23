@@ -1598,7 +1598,6 @@ def schedule_pipeline(
                     currentVersion {
                         id
                         versionNumber
-                        isSchedulable
                         parameters {
                             code
                             name
@@ -1683,8 +1682,8 @@ def get_pipeline_schedule(
         Dict containing:
         - pipeline_id, name, code
         - schedule: Current CRON expression (null if not scheduled)
-        - is_schedulable: Whether the pipeline can be scheduled
         - parameters: List of pipeline parameters (to understand scheduling requirements)
+        - can_schedule: Whether user has permission to schedule
     """
     if not OPENHEXA_AVAILABLE:
         return {"error": "OpenHEXA SDK not available. Please configure credentials."}
@@ -1700,7 +1699,6 @@ def get_pipeline_schedule(
                 currentVersion {
                     id
                     versionNumber
-                    isSchedulable
                     parameters {
                         code
                         name
@@ -1740,7 +1738,15 @@ def get_pipeline_schedule(
                 "error": f"Pipeline '{pipeline_code}' not found in workspace '{workspace_slug}'"
             }
 
-        current_version = pipeline.get("currentVersion", {})
+        current_version = pipeline.get("currentVersion", {}) or {}
+        parameters = current_version.get("parameters", [])
+
+        # Determine if pipeline is schedulable based on parameters
+        # A pipeline is schedulable if all required parameters have defaults
+        is_schedulable = all(
+            not param.get("required") or param.get("default") is not None
+            for param in parameters
+        )
 
         return {
             "pipeline_id": pipeline.get("id"),
@@ -1748,8 +1754,8 @@ def get_pipeline_schedule(
             "code": pipeline.get("code"),
             "schedule": pipeline.get("schedule"),
             "is_scheduled": pipeline.get("schedule") is not None,
-            "is_schedulable": current_version.get("isSchedulable", False),
-            "parameters": current_version.get("parameters", []),
+            "is_schedulable": is_schedulable,
+            "parameters": parameters,
             "can_schedule": pipeline.get("permissions", {}).get("schedule", False),
             "workspace": pipeline.get("workspace"),
         }
