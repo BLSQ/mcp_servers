@@ -313,7 +313,7 @@ def create_pipeline(
 
         create_variables = {"input": create_input}
 
-        result = openhexa.execute(create_query, create_variables)
+        result = openhexa.execute(query=create_query, variables=create_variables)
         response_data = result.json()
 
         if "errors" in response_data:
@@ -347,11 +347,6 @@ def create_pipeline(
                 uploadPipeline(input: $input) {
                     success
                     errors
-                    version {
-                        id
-                        number
-                        pipeline { id name code }
-                    }
                 }
             }
         """
@@ -366,7 +361,7 @@ def create_pipeline(
 
         upload_variables = {"input": upload_input}
 
-        upload_result = openhexa.execute(upload_query, upload_variables)
+        upload_result = openhexa.execute(query=upload_query, variables=upload_variables)
         upload_response_data = upload_result.json()
 
         if "errors" in upload_response_data:
@@ -386,13 +381,10 @@ def create_pipeline(
                 "note": "Pipeline was created but code upload failed",
             }
 
-        version = upload_result_data.get("version")
-
         return {
             "success": True,
             "pipeline": pipeline,
-            "version": version,
-            "message": f"Pipeline '{name}' created successfully with version {version.get('number') if version else 'unknown'}",
+            "message": f"Pipeline '{name}' created and code uploaded successfully",
         }
 
     except Exception as e:
