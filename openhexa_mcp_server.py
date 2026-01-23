@@ -25,8 +25,10 @@ except Exception:
     openhexa = None
 
 # Check SDK availability and required credentials.
-OPENHEXA_AVAILABLE = bool(openhexa) and bool(os.environ.get("HEXA_SERVER_URL")) and bool(
-    os.environ.get("HEXA_TOKEN")
+OPENHEXA_AVAILABLE = (
+    bool(openhexa)
+    and bool(os.environ.get("HEXA_SERVER_URL"))
+    and bool(os.environ.get("HEXA_TOKEN"))
 )
 
 
@@ -84,9 +86,7 @@ def get_workspace_details(workspace_slug: str) -> dict:
 
 
 @mcp.tool
-def list_datasets(
-    page: int = 1, per_page: int = 10, workspace_slug: str | None = None
-) -> dict:
+def list_datasets(page: int = 1, per_page: int = 10, workspace_slug: str | None = None) -> dict:
     """
     List datasets.
 
@@ -110,11 +110,7 @@ def list_datasets(
         datasets_page = openhexa.datasets(page=page, per_page=per_page)
         datasets = [d.model_dump() for d in datasets_page.items]
         if workspace_slug:
-            datasets = [
-                d
-                for d in datasets
-                if d.get("workspace", {}).get("slug") == workspace_slug
-            ]
+            datasets = [d for d in datasets if d.get("workspace", {}).get("slug") == workspace_slug]
         return {
             "datasets": datasets,
             "total_pages": datasets_page.total_pages,
@@ -389,6 +385,136 @@ def create_pipeline(
 
     except Exception as e:
         return {"error": f"Failed to create pipeline: {str(e)}"}
+
+
+@mcp.tool
+def upload_pipeline_version(
+    workspace_slug: str,
+    pipeline_code: str,
+    code_content: str,
+    version_name: str | None = None,
+    description: str | None = None,
+    external_link: str | None = None,
+) -> dict[str, Any]:
+    """
+    Upload a new version to an existing pipeline.
+
+    This tool adds a new version to an already existing pipeline. Use create_pipeline
+    to create a new pipeline first, then use this tool to update it with new versions.
+
+    Args:
+        workspace_slug: The workspace slug where the pipeline exists
+        pipeline_code: The code identifier of the existing pipeline to update
+        code_content: Python code for the new version (will be packaged as ZIP)
+        version_name: Optional name for this version (e.g., "v2.0", "bugfix-auth")
+        description: Optional description of changes in this version
+        external_link: Optional URL to external documentation or repository
+
+    Returns:
+        Dict containing the uploaded pipeline version details
+    """
+    if not OPENHEXA_AVAILABLE:
+        return {"error": "OpenHEXA SDK not available. Please configure your OpenHEXA credentials."}
+
+    try:
+        # Validate inputs
+        if not workspace_slug or not pipeline_code or not code_content:
+            return {"error": "workspace_slug, pipeline_code, and code_content are required"}
+
+        # Package code into ZIP
+        try:
+            zipfile_b64 = _create_pipeline_zipfile(code_content)
+        except Exception as e:
+            return {"error": f"Failed to create ZIP file: {str(e)}"}
+
+        # Upload the new version
+        upload_query = """
+            mutation uploadPipeline($input: UploadPipelineInput!) {
+                uploadPipeline(input: $input) {
+                    success
+                    errors
+                    details
+                    pipelineVersion {
+                        id
+                        versionNumber
+                        versionName
+                        description
+                        createdAt
+                        pipeline {
+                            id
+                            name
+                            code
+                        }
+                    }
+                }
+            }
+        """
+
+        upload_input = {
+            "workspaceSlug": workspace_slug,
+            "pipelineCode": pipeline_code,
+            "zipfile": zipfile_b64,
+        }
+
+        if version_name:
+            upload_input["name"] = version_name
+        if description:
+            upload_input["description"] = description
+        if external_link:
+            upload_input["externalLink"] = external_link
+
+        upload_variables = {"input": upload_input}
+
+        result = openhexa.execute(query=upload_query, variables=upload_variables)
+        response_data = result.json()
+
+        if "errors" in response_data:
+            return {"error": f"GraphQL error: {response_data['errors']}"}
+
+        upload_result = response_data.get("data", {}).get("uploadPipeline", {})
+
+        if not upload_result.get("success"):
+            errors = upload_result.get("errors", [])
+            details = upload_result.get("details", "")
+            error_msg = f"Failed to upload pipeline version: {errors}"
+            if details:
+                error_msg += f" - {details}"
+
+            # Provide helpful error messages for common errors
+            if "PIPELINE_NOT_FOUND" in errors:
+                error_msg += (
+                    f"\nPipeline '{pipeline_code}' not found in workspace "
+                    f"'{workspace_slug}'. Use create_pipeline first."
+                )
+            elif "PERMISSION_DENIED" in errors:
+                error_msg += "\nYou don't have permission to update this pipeline."
+            elif "PIPELINE_DOES_NOT_SUPPORT_PARAMETERS" in errors:
+                error_msg += (
+                    "\nThis pipeline has a schedule and all parameters "
+                    "must be optional or have default values."
+                )
+            elif "DUPLICATE_PIPELINE_VERSION_NAME" in errors:
+                error_msg += (
+                    f"\nVersion name '{version_name}' already exists. "
+                    "Choose a different name."
+                )
+
+            return {"error": error_msg}
+
+        version = upload_result.get("pipelineVersion")
+        version_name_result = version.get("versionName") if version else "unknown"
+
+        return {
+            "success": True,
+            "version": version,
+            "message": (
+                f"New version '{version_name_result}' uploaded successfully "
+                f"to pipeline '{pipeline_code}'"
+            ),
+        }
+
+    except Exception as e:
+        return {"error": "Failed to upload pipeline version: " + str(e)}
 
 
 @mcp.tool
