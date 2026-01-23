@@ -560,7 +560,7 @@ def list_connections(workspace_slug: str) -> dict[str, Any]:
 
         variables = {"slug": workspace_slug}
 
-        result = openhexa.execute(query, variables)
+        result = openhexa.execute(query=query, variables=variables)
         response_data = result.json()
 
         if "errors" in response_data:
@@ -627,7 +627,7 @@ def list_webapps(workspace_slug: str, page: int = 1, per_page: int = 10) -> dict
 
         variables = {"slug": workspace_slug, "page": page, "perPage": per_page}
 
-        result = openhexa.execute(query, variables)
+        result = openhexa.execute(query=query, variables=variables)
         response_data = result.json()
 
         if "errors" in response_data:
