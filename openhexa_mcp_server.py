@@ -212,6 +212,128 @@ def get_pipeline_runs(workspace_slug: str, pipeline_code: str) -> dict:
 
 
 @mcp.tool
+def get_pipeline_code(
+    workspace_slug: str,
+    pipeline_code: str,
+) -> dict[str, Any]:
+    """
+    Get the source code of the latest version of a pipeline.
+
+    This tool fetches the actual Python source code files from a pipeline's
+    current version, including pipeline.py, requirements.txt, and any utility files.
+
+    Args:
+        workspace_slug: The workspace slug where the pipeline exists
+        pipeline_code: The code identifier of the pipeline
+
+    Returns:
+        Dict containing:
+        - pipeline: Basic pipeline info (id, name, code)
+        - version: Version info (id, versionNumber, versionName)
+        - files: List of files with their content:
+            - name: Filename (e.g., "pipeline.py")
+            - path: File path
+            - content: The actual source code (decoded, readable)
+            - language: Detected language (e.g., "python")
+            - lineCount: Number of lines
+        - parameters: Pipeline parameters with types and defaults
+    """
+    if not OPENHEXA_AVAILABLE:
+        return {"error": "OpenHEXA SDK not available. Please configure credentials."}
+
+    try:
+        query = """
+        query getPipelineCode($workspaceSlug: String!, $code: String!) {
+            pipelineByCode(workspaceSlug: $workspaceSlug, code: $code) {
+                id
+                name
+                code
+                description
+                currentVersion {
+                    id
+                    versionNumber
+                    versionName
+                    description
+                    createdAt
+                    parameters {
+                        code
+                        name
+                        type
+                        required
+                        default
+                        help
+                    }
+                    files {
+                        id
+                        name
+                        path
+                        type
+                        content
+                        language
+                        lineCount
+                    }
+                }
+                workspace {
+                    slug
+                    name
+                }
+            }
+        }
+        """
+
+        variables = {
+            "workspaceSlug": workspace_slug,
+            "code": pipeline_code,
+        }
+
+        result = openhexa.execute(query=query, variables=variables)
+        response_data = result.json()
+
+        if "errors" in response_data:
+            return {"error": f"GraphQL error: {response_data['errors']}"}
+
+        pipeline = response_data.get("data", {}).get("pipelineByCode")
+
+        if not pipeline:
+            return {
+                "error": f"Pipeline '{pipeline_code}' not found in workspace '{workspace_slug}'"
+            }
+
+        current_version = pipeline.get("currentVersion")
+        if not current_version:
+            return {
+                "error": f"Pipeline '{pipeline_code}' has no versions yet",
+                "pipeline": {
+                    "id": pipeline.get("id"),
+                    "name": pipeline.get("name"),
+                    "code": pipeline.get("code"),
+                },
+            }
+
+        return {
+            "pipeline": {
+                "id": pipeline.get("id"),
+                "name": pipeline.get("name"),
+                "code": pipeline.get("code"),
+                "description": pipeline.get("description"),
+            },
+            "version": {
+                "id": current_version.get("id"),
+                "versionNumber": current_version.get("versionNumber"),
+                "versionName": current_version.get("versionName"),
+                "description": current_version.get("description"),
+                "createdAt": current_version.get("createdAt"),
+            },
+            "files": current_version.get("files", []),
+            "parameters": current_version.get("parameters", []),
+            "workspace": pipeline.get("workspace"),
+        }
+
+    except Exception as e:
+        return {"error": "Failed to get pipeline code: " + str(e)}
+
+
+@mcp.tool
 def list_workspace_members(workspace_slug: str) -> dict:
     """List members of a workspace."""
     if not OPENHEXA_AVAILABLE:
@@ -1744,8 +1866,7 @@ def get_pipeline_schedule(
         # Determine if pipeline is schedulable based on parameters
         # A pipeline is schedulable if all required parameters have defaults
         is_schedulable = all(
-            not param.get("required") or param.get("default") is not None
-            for param in parameters
+            not param.get("required") or param.get("default") is not None for param in parameters
         )
 
         return {
