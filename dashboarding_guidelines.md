@@ -113,8 +113,9 @@ The API returns JSON with this structure:
 - Use `credentials: 'include'` for cookie-based authentication (no TOKEN header needed)
 - Always set the limit to 10000
 - The API returns JSON data that you can use directly in ECharts
-- If creating map visualizations, check for lat/lon/geolocation columns
-- For world maps, use: "https://cdn.jsdelivr.net/npm/echarts-map@3.0.1/json/world.json"
+- If creating map visualizations, check for lat/lon/geolocation/geography columns
+- If shapes are provided in the data (polygons) use these shapes for plotting maps
+- If only points (latitude or longitude) are given use as background the world map from: "https://cdn.jsdelivr.net/npm/echarts-map@3.0.1/json/world.json"
 - Think about useful filters for the dashboard
 - Verify HTML syntax before saving
 
