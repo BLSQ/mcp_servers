@@ -1,0 +1,213 @@
+---
+name: dhis2-data-values
+description: Extract raw data values from DHIS2 using the dataValueSets API. Use for actual submitted data values, not aggregated analytics. Routed via dhis2 skill for general DHIS2 requests.
+---
+
+# DHIS2 Data Values
+
+Extract and post raw data values using the dataValueSets API.
+
+## Toolbox Methods (Recommended)
+
+The OpenHEXA toolbox provides built-in methods for data value sets.
+
+### Setup
+
+```python
+from openhexa.sdk import workspace, DHIS2Connection
+from openhexa.toolbox.dhis2 import DHIS2
+
+dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache")
+```
+
+### Get Data Values
+
+```python
+# Basic query
+data = dhis.data_value_sets.get(
+    data_elements=["fbfJHSPpUQD", "cYeuwXTCPkU"],
+    org_units=["ImspTQPwCqd"],
+    periods=["202401", "202402", "202403"]
+)
+
+# By dataset
+data = dhis.data_value_sets.get(
+    datasets=["BfMAe6Itzgt"],
+    org_units=["ImspTQPwCqd"],
+    periods=["202401"]
+)
+
+# By data element group
+data = dhis.data_value_sets.get(
+    data_element_groups=["oDkJh5Ddh7d"],
+    org_units=["ImspTQPwCqd"],
+    periods=["2024"]
+)
+
+# With date range instead of periods
+data = dhis.data_value_sets.get(
+    data_elements=["fbfJHSPpUQD"],
+    org_units=["ImspTQPwCqd"],
+    start_date="2024-01-01",
+    end_date="2024-03-31"
+)
+
+# Include children org units
+data = dhis.data_value_sets.get(
+    data_elements=["fbfJHSPpUQD"],
+    org_units=["ImspTQPwCqd"],
+    periods=["202401"],
+    children=True
+)
+
+# By org unit group
+data = dhis.data_value_sets.get(
+    data_elements=["fbfJHSPpUQD"],
+    org_unit_groups=["CXw2yu5fodb"],
+    periods=["202401"]
+)
+
+# Filter by last updated
+data = dhis.data_value_sets.get(
+    data_elements=["fbfJHSPpUQD"],
+    org_units=["ImspTQPwCqd"],
+    periods=["202401"],
+    last_updated="2024-01-15"
+)
+```
+
+### Post Data Values
+
+```python
+# Prepare data values
+data_values = [
+    {
+        "dataElement": "fbfJHSPpUQD",
+        "period": "202401",
+        "orgUnit": "ImspTQPwCqd",
+        "categoryOptionCombo": "HllvX50cXC0",
+        "value": "42"
+    },
+    {
+        "dataElement": "cYeuwXTCPkU",
+        "period": "202401",
+        "orgUnit": "ImspTQPwCqd",
+        "categoryOptionCombo": "HllvX50cXC0",
+        "value": "100"
+    }
+]
+
+# Post with dry run first
+result = dhis.data_value_sets.post(
+    data_values=data_values,
+    dry_run=True
+)
+print(f"Dry run: {result}")
+
+# Actual import
+result = dhis.data_value_sets.post(
+    data_values=data_values,
+    import_strategy="CREATE_AND_UPDATE"
+)
+print(f"Imported: {result}")
+```
+
+## Data Value Structure
+
+Each data value has these fields:
+
+| Field | Description |
+|-------|-------------|
+| `dataElement` | Data element ID |
+| `period` | Period (e.g., 202401) |
+| `orgUnit` | Organisation unit ID |
+| `categoryOptionCombo` | Disaggregation ID |
+| `attributeOptionCombo` | Attribute combo ID |
+| `value` | The actual value |
+| `storedBy` | Username who stored |
+| `created` | Creation timestamp |
+| `lastUpdated` | Last update timestamp |
+| `comment` | Optional comment |
+| `followup` | Flagged for followup |
+
+## Enriching Data Values
+
+### Add Names to DataFrame
+
+```python
+# After getting data values
+df = data  # DataFrame from data_value_sets.get()
+
+# Add data element names
+df = dhis.meta.add_dx_name_column(df, "dataElement")
+
+# Add org unit names
+df = dhis.meta.add_org_unit_name_column(df, "orgUnit")
+
+# Add category option combo names
+df = dhis.meta.add_coc_name_column(df, "categoryOptionCombo")
+
+# Add org unit hierarchy
+df = dhis.meta.add_org_unit_parent_columns(df, "orgUnit")
+```
+
+## Custom API Endpoint (Alternative)
+
+For specific use cases:
+
+```python
+def get_data_values_raw(dhis, params: dict) -> dict:
+    """Get raw dataValueSets response."""
+    return dhis.api.get(
+        "dataValueSets",
+        params=params
+    )
+
+# Example: get with specific attribute option combo
+response = get_data_values_raw(dhis, {
+    "dataSet": "BfMAe6Itzgt",
+    "period": "202401",
+    "orgUnit": "ImspTQPwCqd",
+    "attributeOptionCombo": "HllvX50cXC0"
+})
+```
+
+## Import Strategies
+
+| Strategy | Description |
+|----------|-------------|
+| `CREATE` | Only create new values |
+| `UPDATE` | Only update existing values |
+| `CREATE_AND_UPDATE` | Create or update (default) |
+| `DELETE` | Delete values |
+
+## Period Formats
+
+| Period Type | Format | Example |
+|-------------|--------|---------|
+| Daily | YYYYMMDD | 20240115 |
+| Weekly | YYYYWn | 2024W03 |
+| Monthly | YYYYMM | 202401 |
+| Quarterly | YYYYQn | 2024Q1 |
+| Yearly | YYYY | 2024 |
+
+## Error Handling
+
+```python
+try:
+    data = dhis.data_value_sets.get(
+        data_elements=["invalid_id"],
+        org_units=["ImspTQPwCqd"],
+        periods=["202401"]
+    )
+except Exception as e:
+    current_run.log_error(f"Failed to get data values: {e}")
+```
+
+## Performance Tips
+
+1. **Use specific filters** - Don't query all data
+2. **Limit periods** - Query one year at a time
+3. **Use pagination** - For large datasets
+4. **Enable caching** - `cache_dir` parameter
+5. **Use children=True** - Instead of listing all child org units
