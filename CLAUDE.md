@@ -29,6 +29,20 @@ Extract data from various sources using the appropriate method:
 2. Use **skills** for guided implementation
 3. Use **WebSearch** to research extraction methods for unknown sources
 
+### DHIS2 Query Optimization (MANDATORY)
+
+**ALWAYS use `dhis2-query-optimization` skill when extracting DHIS2 analytics or data values.**
+
+Before ANY `dhis.analytics.get()` or `dhis.data_value_sets.get()` call:
+1. **Estimate complexity**: `org_units × periods × data_elements`
+2. **Never use `children=True` directly** - expand to explicit org unit list first
+3. **Apply chunking** if complexity > 10,000
+
+This prevents:
+- URL length errors (max ~1900 chars)
+- Server timeouts
+- Memory overflow
+
 ### 2. Data Transformation
 Transform data for analysis, standardization, and quality:
 

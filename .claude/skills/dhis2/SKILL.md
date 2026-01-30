@@ -45,11 +45,19 @@ The `dhis` client provides several interfaces:
 High-level methods that handle pagination and return DataFrames:
 
 ```python
-# Analytics - aggregated data
+# Analytics - aggregated data (data elements)
 df = dhis.analytics.get(
     data_elements=["fbfJHSPpUQD"],
     org_units=["ImspTQPwCqd"],
     periods=["202401", "202402"]
+)
+
+# Analytics - indicators (⚠️ ALWAYS use include_cocs=False)
+df = dhis.analytics.get(
+    indicators=["ReUHfIn0pTQ"],
+    org_units=["ImspTQPwCqd"],
+    periods=["202401", "202402"],
+    include_cocs=False  # MANDATORY for indicators - toolbox bug
 )
 
 # Data values - raw submitted data
@@ -110,10 +118,15 @@ page_count = pager.get("pageCount")
 
 ## Routing Decision Tree
 
+**IMPORTANT**: For analytics and data-values queries, ALWAYS use `dhis2-query-optimization` skill first to:
+1. Estimate query complexity
+2. Handle `children=True` by expanding to explicit org unit list
+3. Apply chunking if needed
+
 | User Request | Route To | Toolbox Method |
 |--------------|----------|----------------|
-| Aggregated/indicator values | `dhis2-analytics` | `dhis.analytics.get()` |
-| Raw submitted values | `dhis2-data-values` | `dhis.data_value_sets.get()` |
+| Aggregated/indicator values | `dhis2-analytics` + `dhis2-query-optimization` | `dhis.analytics.get()` |
+| Raw submitted values | `dhis2-data-values` + `dhis2-query-optimization` | `dhis.data_value_sets.get()` |
 | Tracker/individual data | `dhis2-tracker` | `dhis.tracker.*` / `dhis.api.get()` |
 | Validation rules/violations | `dhis2-validation` | `dhis.api.get()` |
 | User info/permissions | `dhis2-users` | `dhis.api.get()` |
