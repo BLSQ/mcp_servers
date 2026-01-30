@@ -7,20 +7,11 @@ description: Query aggregated analytics data from DHIS2. Use for calculated/aggr
 
 Query aggregated analytics data from DHIS2.
 
-## Toolbox Methods (Recommended)
+**Prerequisites**:
+- Client setup from `dhis2` skill (assumes `dhis` is initialized)
+- For large queries, see `dhis2-query-optimization` skill
 
-The OpenHEXA toolbox provides built-in methods for analytics.
-
-### Setup
-
-```python
-from openhexa.sdk import workspace, DHIS2Connection
-from openhexa.toolbox.dhis2 import DHIS2
-
-dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache")
-```
-
-### Get Analytics Data
+## Get Analytics Data
 
 ```python
 # Basic query with data elements
@@ -218,3 +209,17 @@ def get_time_series(dhis, indicator_id: str, org_unit_id: str, periods: int = 12
 3. **Limit data dimensions** - Don't query all data elements
 4. **Enable caching** - Results are cached based on query
 5. **Use skipMeta=True** - If you don't need metadata
+
+## Large Query Handling
+
+**⚠️ For large queries, use `dhis2-query-optimization` skill.**
+
+Queries can fail when:
+- Using `children=True` with country-level org unit
+- Requesting many periods (>12 months)
+- Requesting many data elements (>20)
+
+The optimization skill provides:
+- Complexity estimation
+- Chunking strategies
+- Timeout handling

@@ -7,6 +7,10 @@ description: Extract individual-level/case-based data from DHIS2 Tracker. Use fo
 
 Extract individual-level and case-based data from DHIS2 Tracker programs.
 
+**Prerequisites**:
+- Client setup from `dhis2` skill (assumes `dhis` is initialized)
+- For large queries, see `dhis2-query-optimization` skill
+
 ## Overview
 
 DHIS2 Tracker manages individual-level data through:
@@ -14,17 +18,6 @@ DHIS2 Tracker manages individual-level data through:
 - **Enrollments**: A tracked entity's participation in a program
 - **Events**: Data capture occurrences within an enrollment
 - **Relationships**: Links between tracked entities
-
-## Setup
-
-```python
-from openhexa.sdk import workspace
-from openhexa.toolbox.dhis2 import DHIS2
-
-# Get DHIS2 connection
-dhis2_connection = workspace.dhis2_connection("connection_identifier")
-dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache")
-```
 
 ## Extracting Events (Toolbox Method)
 

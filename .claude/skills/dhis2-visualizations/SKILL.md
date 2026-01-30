@@ -7,17 +7,9 @@ description: Extract DHIS2 visualizations (favorites) metadata and data. Use for
 
 Extract visualization (favorite) metadata and data from DHIS2.
 
+**Prerequisites**: Client setup from `dhis2` skill (assumes `dhis` is initialized)
+
 **Note:** The OpenHEXA toolbox does not have built-in methods for visualizations. Use `dhis.api.get()` with custom endpoints.
-
-## Setup
-
-```python
-from openhexa.sdk import workspace, DHIS2Connection
-from openhexa.toolbox.dhis2 import DHIS2
-import pandas as pd
-
-dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache")
-```
 
 ## Get Visualization Metadata
 

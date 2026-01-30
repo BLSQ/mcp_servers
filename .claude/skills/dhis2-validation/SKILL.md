@@ -7,6 +7,8 @@ description: Run data quality checks and validation rules in DHIS2. Use for vali
 
 Run data quality checks and validation rules in DHIS2.
 
+**Prerequisites**: Client setup from `dhis2` skill (assumes `dhis` is initialized)
+
 ## Overview
 
 The validation endpoints provide:
@@ -14,17 +16,6 @@ The validation endpoints provide:
 - **Validation Analysis**: Run rules against data
 - **Validation Results**: Historical violations stored in the system
 - **Data Quality Reports**: Aggregate validation status
-
-## Setup
-
-```python
-from openhexa.sdk import workspace
-from openhexa.toolbox.dhis2 import DHIS2
-
-# Get DHIS2 connection
-dhis2_connection = workspace.dhis2_connection("connection_identifier")
-dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache")
-```
 
 ## Get Validation Rules
 
