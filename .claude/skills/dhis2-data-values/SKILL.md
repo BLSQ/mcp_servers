@@ -7,20 +7,11 @@ description: Extract raw data values from DHIS2 using the dataValueSets API. Use
 
 Extract and post raw data values using the dataValueSets API.
 
-## Toolbox Methods (Recommended)
+**Prerequisites**:
+- Client setup from `dhis2` skill (assumes `dhis` is initialized)
+- For large queries, see `dhis2-query-optimization` skill
 
-The OpenHEXA toolbox provides built-in methods for data value sets.
-
-### Setup
-
-```python
-from openhexa.sdk import workspace, DHIS2Connection
-from openhexa.toolbox.dhis2 import DHIS2
-
-dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache")
-```
-
-### Get Data Values
+## Get Data Values
 
 ```python
 # Basic query

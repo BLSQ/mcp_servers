@@ -7,20 +7,9 @@ description: Extract data elements and data element groups from DHIS2. Use for d
 
 Extract data element metadata from DHIS2 instances.
 
-## Toolbox Methods (Recommended)
+**Prerequisites**: Client setup from `dhis2` skill (assumes `dhis` is initialized)
 
-The OpenHEXA toolbox provides built-in methods for data elements.
-
-### Setup
-
-```python
-from openhexa.sdk import workspace, DHIS2Connection
-from openhexa.toolbox.dhis2 import DHIS2
-
-dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache")
-```
-
-### Get Data Elements
+## Get Data Elements
 
 ```python
 # Get all data elements

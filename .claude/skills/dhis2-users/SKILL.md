@@ -7,6 +7,8 @@ description: Get DHIS2 user information including current user details, user lis
 
 Access user information, permissions, and organizational access from DHIS2.
 
+**Prerequisites**: Client setup from `dhis2` skill (assumes `dhis` is initialized)
+
 ## Overview
 
 The user endpoints provide:
@@ -14,17 +16,6 @@ The user endpoints provide:
 - User listing and search (`/api/users`)
 - User groups and memberships (`/api/userGroups`)
 - Organization unit access scope
-
-## Setup
-
-```python
-from openhexa.sdk import workspace
-from openhexa.toolbox.dhis2 import DHIS2
-
-# Get DHIS2 connection
-dhis2_connection = workspace.dhis2_connection("connection_identifier")
-dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache")
-```
 
 ## Get Current User Info
 

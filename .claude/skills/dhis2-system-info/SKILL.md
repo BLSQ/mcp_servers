@@ -7,6 +7,8 @@ description: Get DHIS2 system information including version, database details, a
 
 Get system information, version details, and server configuration from DHIS2.
 
+**Prerequisites**: Client setup from `dhis2` skill (assumes `dhis` is initialized)
+
 ## Overview
 
 The system info endpoints provide:
@@ -14,17 +16,6 @@ The system info endpoints provide:
 - Database type and version
 - Server configuration and capabilities
 - System settings and flags
-
-## Setup
-
-```python
-from openhexa.sdk import workspace
-from openhexa.toolbox.dhis2 import DHIS2
-
-# Get DHIS2 connection
-dhis2_connection = workspace.dhis2_connection("connection_identifier")
-dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache")
-```
 
 ## Get System Info
 
