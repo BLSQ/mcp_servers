@@ -149,7 +149,33 @@ A notebook is saved in a JSON format. Here is a valid example:
 }
 
 Note that the source field uses list of strings such as "line_code"\n". Reproduce that format when generating notebooks.
-###
+
+#### BAD source format:
+"source": [
+    "# Extract Province Shapes (Level 2)
+",
+    "
+",
+    "**Purpose:** Download the geometry (shapes) for the first three provinces (Level 2 organisation units) from the SNIS Copy DHIS2 instance.
+",
+    "
+",
+    "**Connection:** `snis-copy`
+",
+    "
+",
+    "**Author:** Gemini CLI Agent
+",
+    "**Date:** 2026-02-10"
+   ]
+#### CORRECT source format:
+"source": [
+    "# Extract Province Shapes (Level 2)",
+    "**Purpose:** Download the geometry (shapes) for the first three provinces (Level 2 organisation units) from the SNIS Copy DHIS2 instance.",
+    "**Connection:** `snis-copy`",
+    "**Author:** Gemini CLI Agent",
+    "**Date:** 2026-02-10"
+   ]
 ### Recommended Cell Order
 
 ```
