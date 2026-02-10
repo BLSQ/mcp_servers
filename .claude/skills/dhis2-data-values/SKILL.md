@@ -1,6 +1,6 @@
 ---
 name: dhis2-data-values
-description: Extract raw data values from DHIS2 using the dataValueSets API. Use for actual submitted data values, not aggregated analytics. Routed via dhis2 skill for general DHIS2 requests.
+description: Extract raw data values from DHIS2 using the dataValueSets API. Use for actual submitted data values, not aggregated analytics. ALWAYS use with dhis2-query-optimization skill. Routed via dhis2 skill for general DHIS2 requests.
 ---
 
 # DHIS2 Data Values
@@ -9,7 +9,43 @@ Extract and post raw data values using the dataValueSets API.
 
 **Prerequisites**:
 - Client setup from `dhis2` skill (assumes `dhis` is initialized)
-- For large queries, see `dhis2-query-optimization` skill
+- **ALWAYS use `dhis2-query-optimization` skill** for complexity estimation and chunking
+
+## MANDATORY: Query Optimization
+
+Before ANY data values query, you MUST:
+
+1. **Estimate complexity** using `dhis2-query-optimization`
+2. **Expand `children=True`** to explicit org unit list if used
+3. **Apply chunking** if complexity > 10,000
+
+```python
+# WRONG - Never do this directly for large queries
+df = dhis.data_value_sets.get(
+    data_sets=["ds1"],
+    org_units=["country_uid"],
+    periods=periods,
+    children=True  # ⚠️ DANGEROUS - unknown expansion
+)
+
+# RIGHT - Use query optimization patterns
+from dhis2_query_optimization import get_descendant_org_units, chunk_by_org_units
+
+# 1. Expand children to explicit list
+org_units = get_descendant_org_units(dhis, "country_uid", levels=[4, 5])
+
+# 2. Chunk and fetch
+all_data = []
+for ou_chunk in chunk_by_org_units(org_units, chunk_size=100):
+    df = dhis.data_value_sets.get(
+        data_sets=["ds1"],
+        org_units=ou_chunk,
+        periods=periods
+    )
+    all_data.append(df)
+
+df = pd.concat(all_data, ignore_index=True)
+```
 
 ## Get Data Values
 

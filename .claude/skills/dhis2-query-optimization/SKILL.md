@@ -1,6 +1,6 @@
 ---
 name: dhis2-query-optimization
-description: Optimize DHIS2 queries to avoid URL length limits, server timeouts, and memory issues. Use when querying large datasets, using children=True, or when queries fail with timeouts. Provides chunking strategies and complexity estimation.
+description: ALWAYS use this skill when querying DHIS2 analytics or data values. Provides mandatory complexity estimation, children=True expansion, and chunking. Prevents URL length limits, server timeouts, and memory issues. Use BEFORE any dhis2-analytics or dhis2-data-values query.
 ---
 
 # DHIS2 Query Optimization

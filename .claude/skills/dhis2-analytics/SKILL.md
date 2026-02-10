@@ -1,6 +1,6 @@
 ---
 name: dhis2-analytics
-description: Query aggregated analytics data from DHIS2. Use for calculated/aggregated values, indicator values, or cross-dimensional analysis. Routed via dhis2 skill for general DHIS2 requests.
+description: Query aggregated analytics data from DHIS2. Use for calculated/aggregated values, indicator values, or cross-dimensional analysis. ALWAYS use with dhis2-query-optimization skill. Routed via dhis2 skill for general DHIS2 requests.
 ---
 
 # DHIS2 Analytics
@@ -9,7 +9,39 @@ Query aggregated analytics data from DHIS2.
 
 **Prerequisites**:
 - Client setup from `dhis2` skill (assumes `dhis` is initialized)
-- For large queries, see `dhis2-query-optimization` skill
+- **ALWAYS use `dhis2-query-optimization` skill** for complexity estimation and chunking
+
+## MANDATORY: Query Optimization
+
+Before ANY analytics query, you MUST:
+
+1. **Estimate complexity** using `dhis2-query-optimization`
+2. **Expand `children=True`** to explicit org unit list if used
+3. **Apply chunking** if complexity > 10,000
+
+```python
+# WRONG - Never do this directly
+df = dhis.analytics.get(
+    data_elements=["de1"],
+    org_units=["country_uid"],
+    periods=["LAST_12_MONTHS"],
+    children=True  # ⚠️ DANGEROUS - unknown expansion
+)
+
+# RIGHT - Use query optimization patterns
+from dhis2_query_optimization import get_descendant_org_units, get_analytics_adaptive
+
+# 1. Expand children to explicit list
+org_units = get_descendant_org_units(dhis, "country_uid", levels=[4, 5])
+
+# 2. Use adaptive chunking
+df = get_analytics_adaptive(
+    dhis,
+    data_elements=["de1"],
+    org_units=org_units,
+    periods=periods
+)
+```
 
 ## Get Analytics Data
 
@@ -21,11 +53,12 @@ data = dhis.analytics.get(
     periods=["202401", "202402", "202403"]
 )
 
-# With indicators
+# With indicators - ALWAYS set include_cocs=False
 data = dhis.analytics.get(
     indicators=["ReUHfIn0pTQ"],
     org_units=["ImspTQPwCqd"],
-    periods=["2024"]
+    periods=["2024"],
+    include_cocs=False  # ⚠️ MANDATORY for indicators
 )
 
 # By data element group
@@ -35,11 +68,12 @@ data = dhis.analytics.get(
     periods=["2024"]
 )
 
-# By indicator group
+# By indicator group - ALWAYS set include_cocs=False
 data = dhis.analytics.get(
     indicator_groups=["oehv9EO3vP7"],
     org_units=["ImspTQPwCqd"],
-    periods=["2024"]
+    periods=["2024"],
+    include_cocs=False  # ⚠️ MANDATORY for indicators
 )
 
 # By org unit group
@@ -198,8 +232,33 @@ def get_time_series(dhis, indicator_id: str, org_unit_id: str, periods: int = 12
     return dhis.analytics.get(
         indicators=[indicator_id],
         org_units=[org_unit_id],
-        periods=[f"LAST_{periods}_MONTHS"]
+        periods=[f"LAST_{periods}_MONTHS"],
+        include_cocs=False  # ⚠️ MANDATORY for indicators
     )
+```
+
+## Important: Indicators and Category Option Combos
+
+**⚠️ ALWAYS use `include_cocs=False` when querying indicators.**
+
+The toolbox defaults to `include_cocs=True`, which adds category option combo disaggregation. This causes queries to FAIL for indicators because indicators don't have category option combos.
+
+```python
+# WRONG - will fail for indicators
+data = dhis.analytics.get(
+    indicators=["ReUHfIn0pTQ"],
+    org_units=["ImspTQPwCqd"],
+    periods=["2024"]
+    # include_cocs defaults to True → FAILS
+)
+
+# RIGHT - always set include_cocs=False for indicators
+data = dhis.analytics.get(
+    indicators=["ReUHfIn0pTQ"],
+    org_units=["ImspTQPwCqd"],
+    periods=["2024"],
+    include_cocs=False  # ⚠️ MANDATORY
+)
 ```
 
 ## Performance Tips
@@ -209,17 +268,5 @@ def get_time_series(dhis, indicator_id: str, org_unit_id: str, periods: int = 12
 3. **Limit data dimensions** - Don't query all data elements
 4. **Enable caching** - Results are cached based on query
 5. **Use skipMeta=True** - If you don't need metadata
-
-## Large Query Handling
-
-**⚠️ For large queries, use `dhis2-query-optimization` skill.**
-
-Queries can fail when:
-- Using `children=True` with country-level org unit
-- Requesting many periods (>12 months)
-- Requesting many data elements (>20)
-
-The optimization skill provides:
-- Complexity estimation
-- Chunking strategies
-- Timeout handling
+6. **ALWAYS estimate complexity first** - See `dhis2-query-optimization`
+7. **ALWAYS use `include_cocs=False` for indicators** - Toolbox bug workaround
