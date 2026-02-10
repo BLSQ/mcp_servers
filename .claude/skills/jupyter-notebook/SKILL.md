@@ -39,6 +39,117 @@ final_final_v2.ipynb
 
 ## Notebook Structure
 
+### Format
+A notebook is saved in a JSON format. Here is a valid example:
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Download Organisation Units - Sierra Leone\n",
+    "\n",
+    "**Purpose:** Download Organisation Units from the Sierra Leone DHIS2 instance.\n",
+    "**Connection:** `play-sierra-dhis2`"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "from openhexa.sdk import workspace\n",
+    "from openhexa.toolbox.dhis2 import DHIS2\n",
+    "\n",
+    "# Setup DHIS2 connection\n",
+    "connection = workspace.dhis2_connection(\"play-sierra-dhis2\")\n",
+    "dhis = DHIS2(connection)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Download all organisation units\n",
+    "# We will fetch basic fields + geometry to have a complete dataset\n",
+    "print(\"Fetching organisation units...\")\n",
+    "org_units = dhis.meta.organisation_units(\n",
+    "    fields=\"id,name,level,parent[id,name],geometry,openingDate,closedDate\"\n",
+    ")\n",
+    "print(f\"Downloaded {len(org_units)} organisation units.\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Convert to DataFrame\n",
+    "df = pd.DataFrame(org_units)\n",
+    "\n",
+    "# Let's inspect the data first\n",
+    "df.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Simple data processing to make it flatter\n",
+    "# If 'parent' is a dict, extract ID and Name\n",
+    "if 'parent' in df.columns:\n",
+    "    df['parent_id'] = df['parent'].apply(lambda x: x.get('id') if isinstance(x, dict) else None)\n",
+    "    df['parent_name'] = df['parent'].apply(lambda x: x.get('name') if isinstance(x, dict) else None)\n",
+    "    df.drop(columns=['parent'], inplace=True)\n",
+    "\n",
+    "df.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Save to CSV for reference\n",
+    "output_filename = \"sierra_leone_org_units.csv\"\n",
+    "df.to_csv(output_filename, index=False)\n",
+    "print(f\"Saved to {output_filename}\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.5"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}
+
+Note that the source field uses list of strings such as "line_code"\n". Reproduce that format when generating notebooks.
+###
 ### Recommended Cell Order
 
 ```
@@ -239,21 +350,6 @@ print(f"Written {len(df_results):,} rows to {table_name}")
 
 ## Visualizations
 
-### Basic Chart Template
-
-```python
-fig, ax = plt.subplots(figsize=(10, 6))
-
-df_summary.plot(kind="bar", ax=ax)
-
-ax.set_title("Chart Title", fontsize=14, fontweight="bold")
-ax.set_xlabel("X Label")
-ax.set_ylabel("Y Label")
-ax.legend(title="Legend")
-
-plt.tight_layout()
-plt.show()
-```
 
 ### Save Figures
 
@@ -272,38 +368,7 @@ engine.dispose()
 print("Connections closed")
 ```
 
-## Common Patterns
 
-### Load Multiple Tables
-
-```python
-tables_to_load = ["table_a", "table_b", "table_c"]
-dataframes = {}
-
-for table in tables_to_load:
-    dataframes[table] = pd.read_sql(f"SELECT * FROM {table}", engine)
-    print(f"Loaded {table}: {len(dataframes[table]):,} rows")
-```
-
-### Parameterized Analysis
-
-```python
-def analyze_org_unit(org_unit_id: str) -> pd.DataFrame:
-    """Run standard analysis for an org unit."""
-    df = pd.read_sql(f"""
-        SELECT * FROM data
-        WHERE org_unit = %(ou)s
-    """, engine, params={"ou": org_unit_id})
-
-    return df.groupby("indicator").agg({
-        "value": ["sum", "mean", "count"]
-    })
-
-# Run for multiple org units
-results = {}
-for ou in ["OU1", "OU2", "OU3"]:
-    results[ou] = analyze_org_unit(ou)
-```
 
 ## Checklist
 
