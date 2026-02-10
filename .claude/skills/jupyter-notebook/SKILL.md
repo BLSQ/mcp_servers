@@ -1,31 +1,30 @@
 ---
 name: jupyter-notebook
-description: Create Jupyter notebooks with correct JSON format. CRITICAL: source arrays must use single-line strings with \n, never multi-line strings.
+description: Create Jupyter notebooks with correct JSON format. CRITICAL: source arrays must use single-line strings without \n at the end, never multi-line strings.
 ---
 
 # Jupyter Notebook Format
 
 ## CRITICAL: Source Field Format
 
-The `source` field is a list of strings. Each string MUST be on a single line with `\n` for newlines.
+The `source` field is a list of strings.
 
 ### ❌ BAD - Multi-line strings (INVALID JSON):
 ```json
 "source": [
     "# Title
 ",
-    "Some text
-",
-    "More text"
+    "Some text \n ",
+    "More text
+"
 ]
 ```
 
 ### ✅ CORRECT - Single-line strings with \n:
 ```json
 "source": [
-    "# Title\n",
-    "\n",
-    "Some text\n",
+    "# Title",
+    "Some text",
     "More text"
 ]
 ```
@@ -39,8 +38,7 @@ The `source` field is a list of strings. Each string MUST be on a single line wi
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# Notebook Title\n",
-    "\n",
+    "# Notebook Title",
     "**Purpose:** Description here"
    ]
   },
@@ -50,8 +48,7 @@ The `source` field is a list of strings. Each string MUST be on a single line wi
    "metadata": {},
    "outputs": [],
    "source": [
-    "import pandas as pd\n",
-    "\n",
+    "import pandas as pd",
     "print('Hello')"
    ]
   }
