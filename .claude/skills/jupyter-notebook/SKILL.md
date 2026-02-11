@@ -9,7 +9,7 @@ You are an expert at creating, editing, and manipulating Jupyter notebooks progr
 
 ## ⚠️ CRITICAL: NEVER Write Raw Notebook JSON
 
-**DO NOT** write `.ipynb` files by directly outputting JSON. LLMs frequently produce invalid JSON by turning `\n` escape sequences into literal newlines, which breaks the file.
+**DO NOT** write `.ipynb` files by directly outputting JSON. LLMs frequently produce invalid JSON by turning `\n` escape sequences into literal backslash-n text, which breaks the file (all code appears on one line).
 
 **ALWAYS** generate notebooks using a **Python script** that builds the notebook as a Python data structure and serializes it with `json.dump()`. This guarantees valid JSON output.
 
@@ -32,12 +32,12 @@ notebook = {
 }
 
 def md_cell(cell_id, source_lines):
-    """Create a markdown cell. source_lines is a list of strings (no \\n needed, added automatically)."""
+    """Create a markdown cell. source_lines is a list of plain strings (no \\n needed)."""
     source = [line + "\n" for line in source_lines[:-1]] + [source_lines[-1]] if source_lines else []
     return {"cell_type": "markdown", "source": source, "metadata": {"id": cell_id}}
 
 def code_cell(cell_id, source_lines):
-    """Create a code cell. source_lines is a list of strings (no \\n needed, added automatically)."""
+    """Create a code cell. source_lines is a list of plain strings (no \\n needed)."""
     source = [line + "\n" for line in source_lines[:-1]] + [source_lines[-1]] if source_lines else []
     return {
         "cell_type": "code",
@@ -70,35 +70,63 @@ with open("notebook.ipynb", "w", encoding="utf-8") as f:
 print("✓ Notebook created successfully")
 ```
 
-### Step 2: Run the script, then validate
+### Step 2: ALWAYS validate and auto-fix after generation
 
-After generating the notebook, **always** run this validation:
+After generating **any** notebook, **always** run this validation and auto-fix script. This catches the most common LLM failure: writing literal `\n` text instead of actual newline characters.
 
 ```python
 import json, sys
 
 path = "notebook.ipynb"
+
+# --- Load ---
 try:
     with open(path, "r") as f:
         nb = json.load(f)
-    assert "cells" in nb, "Missing 'cells' key"
-    assert nb.get("nbformat") == 4, "Bad nbformat"
-    for i, cell in enumerate(nb["cells"]):
-        assert "cell_type" in cell, f"Cell {i}: missing cell_type"
-        assert "source" in cell, f"Cell {i}: missing source"
-        assert isinstance(cell["source"], list), f"Cell {i}: source must be a list"
-        for j, line in enumerate(cell["source"]):
-            assert isinstance(line, str), f"Cell {i}, line {j}: not a string"
-        if cell["cell_type"] == "code":
-            assert "outputs" in cell, f"Cell {i}: code cell missing outputs"
-    print(f"✓ Valid notebook: {len(nb['cells'])} cells")
 except json.JSONDecodeError as e:
     print(f"✗ INVALID JSON: {e}", file=sys.stderr)
     sys.exit(1)
-except AssertionError as e:
-    print(f"✗ INVALID STRUCTURE: {e}", file=sys.stderr)
-    sys.exit(1)
+
+# --- Structural validation ---
+assert "cells" in nb, "Missing 'cells' key"
+assert nb.get("nbformat") == 4, "Bad nbformat"
+
+fixed = False
+for i, cell in enumerate(nb["cells"]):
+    assert "cell_type" in cell, f"Cell {i}: missing cell_type"
+    assert "source" in cell, f"Cell {i}: missing source"
+    assert isinstance(cell["source"], list), f"Cell {i}: source must be a list"
+
+    if cell["cell_type"] == "code":
+        if "outputs" not in cell:
+            cell["outputs"] = []
+            fixed = True
+        if "execution_count" not in cell:
+            cell["execution_count"] = None
+            fixed = True
+
+    # --- AUTO-FIX: literal \\n → actual \n ---
+    # This is the #1 failure mode for LLMs generating notebooks.
+    # They write the two characters \ and n instead of a real newline.
+    new_source = []
+    for line in cell["source"]:
+        assert isinstance(line, str), f"Cell {i}: source line is not a string"
+        if "\\n" in line:
+            fixed = True
+            line = line.replace("\\n", "\n")
+        new_source.append(line)
+    cell["source"] = new_source
+
+# --- Write back if fixes were applied ---
+if fixed:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(nb, f, indent=2, ensure_ascii=False)
+    print(f"⚠️ Auto-fixed notebook ({len(nb['cells'])} cells) — literal \\\\n replaced with real newlines")
+else:
+    print(f"✓ Valid notebook: {len(nb['cells'])} cells, no fixes needed")
 ```
+
+**This validation + auto-fix step is MANDATORY. Never skip it.**
 
 ## Helper Functions Reference
 
@@ -188,7 +216,7 @@ code_cell("train_loop", [
 
 Before finalizing a notebook:
 - [ ] Generated via Python script with `json.dump()` — **never raw JSON**
-- [ ] Validation script ran successfully after generation
+- [ ] Validation + auto-fix script ran successfully after generation
 - [ ] All cells have unique IDs
 - [ ] Markdown cells have proper headers and formatting
 - [ ] Code cells are logically ordered
@@ -197,9 +225,3 @@ Before finalizing a notebook:
 - [ ] Error handling for common failures
 - [ ] Clear output messages (✓ for success, ⚠️ for warnings)
 - [ ] Section dividers between major parts
-
-
-
-## Save Location
-
-Save notebooks in `workspace/notebooks/` folder with descriptive names like `data_exploration.ipynb`.
