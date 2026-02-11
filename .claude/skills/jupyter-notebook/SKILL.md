@@ -1,91 +1,175 @@
 ---
 name: jupyter-notebook
-description: Create Jupyter notebooks with correct JSON format. CRITICAL: Never emit literal newlines in JSON. Emit \\n if needed. Prefer single quotes in Python code to reduce JSON escaping
+description: Create Jupyter notebooks with correct JSON format.
 ---
 
-# Jupyter Notebook Format
+## Notebook Structure
 
-## CRITICAL: Source Field Format
-
-The `source` field is a list of strings.
-
-### ❌ BAD - Multi-line strings (INVALID JSON):
-```json
-"source": [
-    "# Title\n",
-    "Some text \n end of the sentence ",
-    "More text\n"
-]
-```
-
-### ✅ CORRECT - Single-line strings with \n:
-```json
-"source": [
-    "# Title",
-    "Some text \\n end of the sentence",
-    "More text"
-]
-```
-
-## Minimal Valid Notebook
-
+A `.ipynb` file is JSON with this structure:
 ```json
 {
- "cells": [
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "# Notebook Title",
-    "**Purpose:** Description here"
-   ]
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {"provenance": []},
+    "kernelspec": {"name": "python3", "display_name": "Python 3"}
   },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "import pandas as pd",
-    "print('Hello')"
-   ]
-  }
- ],
- "metadata": {
-  "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
-  "language_info": {"name": "python", "version": "3.8.5"}
- },
- "nbformat": 4,
- "nbformat_minor": 4
+  "cells": [
+    {
+      "cell_type": "markdown",  // or "code"
+      "source": ["line 1\n", "line 2\n"],  // array of strings
+      "metadata": {"id": "unique_id"}
+    }
+  ]
 }
 ```
 
-1) Source items must be valid JSON strings
+## Key Rules
 
-Every cells[i].source[j] must be a JSON string with:
+### Cell Source Format
+- `source` is an **array of strings**, each ending with `\n` (except possibly the last)
+- NOT a single string
+- Example: `["print('hello')\n", "print('world')"]`
 
-No literal newline characters inside it.
+### Escaping in JSON
+When writing notebook JSON:
+- Escape quotes: `\"`
+- Escape newlines in strings: `\\n` (literal) vs `\n` (actual newline in array)
+- Escape backslashes: `\\`
 
-Any newline semantics must be represented as either:
+### Cell IDs
+- Each cell needs a unique `metadata.id`
+- Use descriptive IDs: `"install_deps"`, `"train_model"`, `"plot_results"`
 
-- a dedicated line string ending with \\n, or
+## Creating Notebooks
 
-- an empty line string equal to "\\n" (not a literal blank line in the JSON file).
+### Markdown Cells
+```python
+{
+    "cell_type": "markdown",
+    "source": [
+        "# My Notebook\n",
+        "\n",
+        "Description here.\n"
+    ],
+    "metadata": {"id": "intro"}
+}
+```
 
-2) Always JSON-escape content inside source strings
+### Code Cells
+```python
+{
+    "cell_type": "code",
+    "source": [
+        "import torch\n",
+        "import numpy as np\n",
+        "\n",
+        "print('Ready!')\n"
+    ],
+    "metadata": {"id": "imports"},
+    "execution_count": null,
+    "outputs": []
+}
+```
 
-Inside each source string:
+### Colab Form Fields
+```python
+"#@title Cell Title { display-mode: \"form\" }\n",
+"param = \"default\"  #@param {type:\"string\"}\n",
+"number = 10  #@param {type:\"integer\"}\n",
+"flag = True  #@param {type:\"boolean\"}\n",
+"choice = \"A\"  #@param [\"A\", \"B\", \"C\"]\n",
+```
 
-- Any " in Python code must be escaped for JSON as \", or prefer single quotes in Python to avoid it.
+### Collapsible Sections (Colab)
+Use `#@title` on code cells - they become collapsible when run.
 
-- Backslashes must be preserved correctly (e.g., \\n if you want Python to see \n).
+## Editing Notebooks
 
-3) Represent blank lines explicitly
+### Safe Edit Pattern
+```python
+import json
 
-If you want a blank line between code lines, use:
+# Read
+with open('notebook.ipynb', 'r') as f:
+    nb = json.load(f)
 
-"\\n" as its own array element, or end previous line with \\n and insert another "\\n" line.
+# Find cell by ID
+for cell in nb['cells']:
+    if cell.get('metadata', {}).get('id') == 'target_id':
+        # Modify cell['source']
+        break
+
+# Write back
+with open('notebook.ipynb', 'w') as f:
+    json.dump(nb, f, indent=2)
+```
+
+### Insert Cell
+```python
+new_cell = {
+    "cell_type": "code",
+    "source": ["# new code\n"],
+    "metadata": {"id": "new_cell"},
+    "execution_count": null,
+    "outputs": []
+}
+# Insert at position
+nb['cells'].insert(index, new_cell)
+```
+
+### Delete Cell
+```python
+nb['cells'] = [c for c in nb['cells'] if c.get('metadata', {}).get('id') != 'cell_to_delete']
+```
+
+## Notebook Patterns
+
+### Setup Cell (Common)
+```python
+["#@title Setup\n",
+ "!pip install -q package1 package2\n",
+ "\n",
+ "import package1\n",
+ "import package2\n",
+ "\n",
+ "print('✓ Setup complete')\n"]
+```
+
+### Config Cell (Colab Forms)
+```python
+["#@title Configuration { display-mode: \"form\" }\n",
+ "\n",
+ "MODEL_NAME = \"gpt2\"  #@param {type:\"string\"}\n",
+ "BATCH_SIZE = 32  #@param {type:\"integer\"}\n",
+ "USE_GPU = True  #@param {type:\"boolean\"}\n"]
+```
+
+### Progress Display
+```python
+["from tqdm.notebook import tqdm\n",
+ "\n",
+ "for i in tqdm(range(100)):\n",
+ "    # work\n",
+ "    pass\n"]
+```
+
+## Quality Checklist
+
+Before finalizing a notebook:
+- [ ] All cells have unique IDs
+- [ ] Markdown cells have proper headers and formatting
+- [ ] Code cells are logically ordered
+- [ ] Imports are at the top or in a setup cell
+- [ ] Config values use Colab form fields where appropriate
+- [ ] Error handling for common failures
+- [ ] Clear output messages (✓ for success, ⚠️ for warnings)
+- [ ] Section dividers between major parts
+
+## Format validation
+
+Verify if the JSON created file still follows the rules above before stopping the task
 
 ## Save Location
 
-Save notebooks in `notebooks/` folder with descriptive names like `data_exploration.ipynb`.
+Save notebooks in `workspace/notebooks/` folder with descriptive names like `data_exploration.ipynb`.
