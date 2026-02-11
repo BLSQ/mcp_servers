@@ -1,6 +1,6 @@
 ---
 name: jupyter-notebook
-description: Create Jupyter notebooks with correct JSON format. CRITICAL: source arrays must use single-line strings without \n , never multi-line strings.
+description: Create Jupyter notebooks with correct JSON format. CRITICAL: Never emit literal newlines in JSON. Emit \\n if needed. Prefer single quotes in Python code to reduce JSON escaping
 ---
 
 # Jupyter Notebook Format
@@ -12,11 +12,9 @@ The `source` field is a list of strings.
 ### ❌ BAD - Multi-line strings (INVALID JSON):
 ```json
 "source": [
-    "# Title
-",
+    "# Title\n",
     "Some text \n end of the sentence ",
-    "More text
-"
+    "More text\n"
 ]
 ```
 
@@ -62,8 +60,31 @@ The `source` field is a list of strings.
 }
 ```
 
-The reason behind this is that when rendering a JSON file from the LLM text, all "\n" will be used as new line, breaking the JSON synthax of just instead writing the character "\n".
-So never use \n or \t. The only case is to use \\n or \\t in strings inside code lines.
+1) Source items must be valid JSON strings
+
+Every cells[i].source[j] must be a JSON string with:
+
+No literal newline characters inside it.
+
+Any newline semantics must be represented as either:
+
+- a dedicated line string ending with \\n, or
+
+- an empty line string equal to "\\n" (not a literal blank line in the JSON file).
+
+2) Always JSON-escape content inside source strings
+
+Inside each source string:
+
+- Any " in Python code must be escaped for JSON as \", or prefer single quotes in Python to avoid it.
+
+- Backslashes must be preserved correctly (e.g., \\n if you want Python to see \n).
+
+3) Represent blank lines explicitly
+
+If you want a blank line between code lines, use:
+
+"\\n" as its own array element, or end previous line with \\n and insert another "\\n" line.
 
 ## Save Location
 
