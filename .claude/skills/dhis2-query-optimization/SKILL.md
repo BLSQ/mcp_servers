@@ -1,92 +1,154 @@
 ---
 name: dhis2-query-optimization
-description: ALWAYS use this skill when querying DHIS2 analytics or data values. Provides mandatory complexity estimation, children=True expansion, and chunking. Prevents URL length limits, server timeouts, and memory issues. Use BEFORE any dhis2-analytics or dhis2-data-values query.
+description: ALWAYS use this skill when querying DHIS2 analytics or data values. Provides MAX_* tuning for batch sizes, children=True expansion, and server error handling. Prevents URL length limits, server timeouts, and memory issues.
 ---
 
 # DHIS2 Query Optimization
 
-Strategies for handling large DHIS2 queries that might fail due to URL length, server timeout, or memory limits.
+The OpenHEXA toolbox **already handles batching automatically** via internal MAX_* attributes. This skill explains how to tune those attributes and handle edge cases.
 
 **Prerequisites**: Client setup from `dhis2` skill (assumes `dhis` is initialized)
 
-## Problem Overview
+## How Toolbox Batching Works
 
-DHIS2 queries can fail when:
+The toolbox splits large queries into batches based on these instance attributes:
 
-| Problem | Symptom | Threshold |
-|---------|---------|-----------|
-| URL too long | HTTP 414 or truncated query | ~1900 characters |
-| Server timeout | HTTP 504 or connection timeout | Query complexity too high |
-| Memory overflow | HTTP 500 or incomplete response | Response too large |
-
-## Query Complexity Estimation
-
-### Formula
-
+**DataValueSets** (`dhis.data_value_sets`):
 ```python
-complexity = org_units × periods × data_elements
+MAX_DATA_ELEMENTS = 50  # Data elements per batch
+MAX_ORG_UNITS = 50      # Org units per batch
+MAX_PERIODS = 5         # Periods per batch
+DATE_RANGE_DELTA = relativedelta(years=1)  # Date range chunk size
 ```
 
-**Safe thresholds** (approximate):
-- `complexity < 10,000` - Usually safe
-- `complexity 10,000-50,000` - May need chunking
-- `complexity > 50,000` - Definitely chunk
+**Analytics** (`dhis.analytics`):
+```python
+MAX_DX = 50             # Data elements/indicators per batch
+MAX_ORG_UNITS = 50      # Org units per batch
+MAX_PERIODS = 1         # Periods per batch (conservative default)
+```
 
-### The `children=True` Problem
+## Tuning MAX_* Attributes
 
-When using `children=True`, you don't know the org unit count upfront:
+You can modify these attributes before querying:
 
 ```python
-# This might request data for 5,000+ org units!
-df = dhis.analytics.get(
-    data_elements=["fbfJHSPpUQD"],
-    org_units=["country_uid"],  # Level 1
-    periods=["LAST_12_MONTHS"],
-    include_cocs=True,
-    children=True  # ⚠️ Expands to ALL descendants
+# Increase batch sizes for faster servers
+dhis.analytics.MAX_ORG_UNITS = 100
+dhis.analytics.MAX_PERIODS = 4
+dhis.data_value_sets.MAX_ORG_UNITS = 100
+dhis.data_value_sets.MAX_PERIODS = 12
+```
+
+**When to increase MAX_* values:**
+- Fast, well-resourced DHIS2 server
+- Fewer total API calls needed
+- Reduce extraction time
+
+**When to decrease MAX_* values:**
+- Slow or overloaded server
+- Getting timeout errors (502, 504)
+- Getting server errors (500)
+
+## Handling Server Errors (50X)
+
+If you encounter **HTTP 502, 504, or timeout errors**, the batch size is too large for the server:
+
+```python
+# Server struggling with default values
+# Reduce batch sizes:
+dhis.analytics.MAX_ORG_UNITS = 25      # Was 50
+dhis.analytics.MAX_PERIODS = 1         # Was 1 (already minimal)
+dhis.analytics.MAX_DX = 25             # Was 50
+
+dhis.data_value_sets.MAX_ORG_UNITS = 25
+dhis.data_value_sets.MAX_PERIODS = 3   # Was 5
+dhis.data_value_sets.MAX_DATA_ELEMENTS = 25
+```
+
+**Error → Action mapping:**
+
+| Error | Meaning | Action |
+|-------|---------|--------|
+| HTTP 502 Bad Gateway | Server overwhelmed | Reduce all MAX_* by 50% |
+| HTTP 504 Gateway Timeout | Query took too long | Reduce MAX_ORG_UNITS and MAX_PERIODS |
+| HTTP 500 Internal Error | Server crashed | Reduce MAX_* significantly, try MAX_*=10 |
+| Connection timeout | Network/server issue | Add retry logic + reduce batch size |
+
+## The `children=True` Problem
+
+**This is the one case where MAX_* tuning alone is NOT sufficient.**
+
+When you pass `children=True`, the DHIS2 **server** expands org units, but the **toolbox** doesn't know how many children exist:
+
+```python
+# Toolbox sees: 1 org unit → creates 1 batch
+# Server sees: 1 org unit + children=True → expands to 5,000+ org units!
+df = dataframe.extract_analytics(
+    dhis,
+    data_elements=["de1"],
+    org_units=["national_uid"],  # Just 1
+    periods=["202401"],
+    children=True  # ⚠️ Server-side expansion, toolbox can't batch
 )
 ```
 
-### Estimate Org Unit Count
+**Solution: Expand org units explicitly BEFORE querying:**
 
 ```python
-def estimate_org_unit_count(dhis, parent_uid: str) -> int:
-    """Estimate number of org units under a parent."""
-    # Get parent info
-    parent = dhis.api.get(
-        f"organisationUnits/{parent_uid}",
-        params={"fields": "level,children::size"}
+from openhexa.toolbox.dhis2 import dataframe
+
+# 1. Get org unit counts to understand the pyramid
+counts = get_org_unit_counts_by_level(dhis)
+max_level = max(counts.keys())
+total_org_units = sum(counts.values())
+
+print(f"Org unit pyramid: {counts}")
+print(f"Total org units: {total_org_units}")
+
+# 2. If total exceeds MAX_ORG_UNITS, expand explicitly
+if total_org_units > dhis.analytics.MAX_ORG_UNITS:
+    # Get explicit list - toolbox can batch this correctly
+    org_units_df = dataframe.get_organisation_units(dhis, max_level=max_level)
+    all_org_unit_ids = org_units_df["id"].to_list()
+
+    df = dataframe.extract_analytics(
+        dhis,
+        data_elements=["de1"],
+        org_units=all_org_unit_ids,  # Explicit list
+        periods=["202401"]
+        # NO children=True needed
     )
-    parent_level = parent.get("level", 1)
-
-    # Get org unit counts by level
-    levels = dhis.api.get(
-        "filledOrganisationUnitLevels",
-        params={"fields": "id,level,name"}
+else:
+    # Small pyramid - children=True is safe
+    df = dataframe.extract_analytics(
+        dhis,
+        data_elements=["de1"],
+        org_units=["national_uid"],
+        periods=["202401"],
+        children=True  # Safe when total < MAX_ORG_UNITS
     )
-
-    # Count all org units below parent level
-    total = 0
-    ou_by_level = dhis.meta.organisation_units()
-
-    # Group by level and count under parent
-    # Simplified: get descendants directly
-    descendants = dhis.api.get(
-        "organisationUnits",
-        params={
-            "filter": f"path:like:{parent_uid}",
-            "fields": "id",
-            "paging": "false"
-        }
-    )
-    return len(descendants.get("organisationUnits", []))
-
-# Usage
-count = estimate_org_unit_count(dhis, "ImspTQPwCqd")
-print(f"Org units under parent: {count}")
 ```
 
+## Decision Tree
+
+```
+Do you need descendants of a parent org unit?
+│
+├─► NO: Just tune MAX_* if needed, toolbox batches automatically
+│
+└─► YES: How many org units will be included?
+        │
+        ├─► > MAX_ORG_UNITS: Use explicit org unit list (toolbox batches correctly)
+        │
+        └─► ≤ MAX_ORG_UNITS: children=True is safe to use
+```
+
+## Estimating Org Unit Counts
+
 ### Quick Level-Based Estimation
+
+Efficient way to understand the org unit pyramid:
 
 ```python
 def get_org_unit_counts_by_level(dhis) -> dict:
@@ -106,6 +168,12 @@ def get_org_unit_counts_by_level(dhis) -> dict:
 
     return counts
 
+# Usage
+counts = get_org_unit_counts_by_level(dhis)
+max_level = max(counts.keys())
+print(f"Org unit pyramid: {counts}")
+print(f"Max level: {max_level}")
+
 # Typical structure:
 # Level 1: 1 (country)
 # Level 2: 10-50 (regions)
@@ -114,290 +182,126 @@ def get_org_unit_counts_by_level(dhis) -> dict:
 # Level 5: 1000-10000 (facilities)
 ```
 
-## Chunking Strategies
-
-### Strategy 1: Chunk by Org Units
-
-Best when you have many org units but few periods/data elements:
+### Estimate Descendant Count for a Parent
 
 ```python
-def chunk_by_org_units(org_units: list, chunk_size: int = 100) -> list:
-    """Split org units into chunks."""
-    return [org_units[i:i + chunk_size] for i in range(0, len(org_units), chunk_size)]
-
-def get_analytics_chunked_by_ou(
-    dhis,
-    data_elements: list,
-    org_units: list,
-    periods: list,
-    chunk_size: int = 100
-) -> pd.DataFrame:
-    """Get analytics data, chunking by org units."""
-    all_data = []
-
-    for i, ou_chunk in enumerate(chunk_by_org_units(org_units, chunk_size)):
-        print(f"Fetching chunk {i+1}, org units {len(ou_chunk)}")
-
-        df = dhis.analytics.get(
-            data_elements=data_elements,
-            org_units=ou_chunk,
-            periods=periods
-        )
-        all_data.append(df)
-
-    return pd.concat(all_data, ignore_index=True)
-```
-
-### Strategy 2: Chunk by Periods
-
-Best when you have many periods but few org units:
-
-```python
-def chunk_by_periods(periods: list, chunk_size: int = 12) -> list:
-    """Split periods into chunks."""
-    return [periods[i:i + chunk_size] for i in range(0, len(periods), chunk_size)]
-
-def get_analytics_chunked_by_period(
-    dhis,
-    data_elements: list,
-    org_units: list,
-    periods: list,
-    chunk_size: int = 12
-) -> pd.DataFrame:
-    """Get analytics data, chunking by periods."""
-    all_data = []
-
-    for i, period_chunk in enumerate(chunk_by_periods(periods, chunk_size)):
-        print(f"Fetching chunk {i+1}, periods {period_chunk[0]} to {period_chunk[-1]}")
-
-        df = dhis.analytics.get(
-            data_elements=data_elements,
-            org_units=org_units,
-            periods=period_chunk
-        )
-        all_data.append(df)
-
-    return pd.concat(all_data, ignore_index=True)
-```
-
-### Strategy 3: Chunk by Data Elements
-
-Best when you have many data elements:
-
-```python
-def chunk_by_data_elements(data_elements: list, chunk_size: int = 20) -> list:
-    """Split data elements into chunks."""
-    return [data_elements[i:i + chunk_size] for i in range(0, len(data_elements), chunk_size)]
-
-def get_analytics_chunked_by_de(
-    dhis,
-    data_elements: list,
-    org_units: list,
-    periods: list,
-    chunk_size: int = 20
-) -> pd.DataFrame:
-    """Get analytics data, chunking by data elements."""
-    all_data = []
-
-    for i, de_chunk in enumerate(chunk_by_data_elements(data_elements, chunk_size)):
-        print(f"Fetching chunk {i+1}, data elements {len(de_chunk)}")
-
-        df = dhis.analytics.get(
-            data_elements=de_chunk,
-            org_units=org_units,
-            periods=periods
-        )
-        all_data.append(df)
-
-    return pd.concat(all_data, ignore_index=True)
-```
-
-### Strategy 4: Replace `children=True` with Explicit List
-
-**Recommended approach** - avoids unknown expansion:
-
-```python
-def get_descendant_org_units(dhis, parent_uid: str, levels: list = None) -> list:
-    """Get all descendant org unit UIDs under a parent."""
-    params = {
-        "filter": f"path:like:{parent_uid}",
-        "fields": "id,level",
-        "paging": "false"
-    }
-
-    response = dhis.api.get("organisationUnits", params=params)
-    org_units = response.get("organisationUnits", [])
-
-    # Filter by level if specified
-    if levels:
-        org_units = [ou for ou in org_units if ou.get("level") in levels]
-
-    return [ou["id"] for ou in org_units]
-
-# Usage: Instead of children=True
-# BAD (unknown expansion):
-# df = dhis.analytics.get(..., org_units=["country"], children=True)
-
-# GOOD (explicit, can chunk):
-descendants = get_descendant_org_units(dhis, "country_uid", levels=[4, 5])
-print(f"Found {len(descendants)} org units")
-
-# Now chunk the explicit list
-df = get_analytics_chunked_by_ou(
-    dhis,
-    data_elements=["de1", "de2"],
-    org_units=descendants,
-    periods=["202401", "202402"]
-)
-```
-
-## Adaptive Chunking
-
-Automatically determine best chunking strategy:
-
-```python
-def get_analytics_adaptive(
-    dhis,
-    data_elements: list,
-    org_units: list,
-    periods: list,
-    max_complexity: int = 10000
-) -> pd.DataFrame:
-    """Get analytics with adaptive chunking based on query complexity."""
-
-    n_ou = len(org_units)
-    n_pe = len(periods)
-    n_de = len(data_elements)
-    complexity = n_ou * n_pe * n_de
-
-    print(f"Query complexity: {n_ou} OUs × {n_pe} periods × {n_de} DEs = {complexity:,}")
-
-    if complexity <= max_complexity:
-        print("Complexity OK, executing single query")
-        return dhis.analytics.get(
-            data_elements=data_elements,
-            org_units=org_units,
-            periods=periods
-        )
-
-    # Determine what to chunk
-    # Chunk the dimension with the most items
-    if n_ou >= n_pe and n_ou >= n_de:
-        chunk_size = max(1, max_complexity // (n_pe * n_de))
-        print(f"Chunking by org units, size={chunk_size}")
-        return get_analytics_chunked_by_ou(dhis, data_elements, org_units, periods, chunk_size)
-
-    elif n_pe >= n_ou and n_pe >= n_de:
-        chunk_size = max(1, max_complexity // (n_ou * n_de))
-        print(f"Chunking by periods, size={chunk_size}")
-        return get_analytics_chunked_by_period(dhis, data_elements, org_units, periods, chunk_size)
-
-    else:
-        chunk_size = max(1, max_complexity // (n_ou * n_pe))
-        print(f"Chunking by data elements, size={chunk_size}")
-        return get_analytics_chunked_by_de(dhis, data_elements, org_units, periods, chunk_size)
-```
-
-## URL Length Handling
-
-For raw API queries, check URL length:
-
-```python
-def build_url_params(params: dict) -> str:
-    """Build URL query string to check length."""
-    from urllib.parse import urlencode
-    return urlencode(params, doseq=True)
-
-def check_url_length(base_url: str, params: dict, max_length: int = 1900) -> bool:
-    """Check if URL would exceed max length."""
-    query_string = build_url_params(params)
-    full_length = len(base_url) + 1 + len(query_string)  # +1 for '?'
-    return full_length <= max_length
-
-# If URL too long, use POST instead of GET (where supported)
-# Or chunk the parameters
-```
-
-## Timeout and Retry Handling
-
-```python
-import time
-
-def query_with_retry(
-    query_func,
-    max_retries: int = 3,
-    initial_delay: float = 5.0,
-    backoff_factor: float = 2.0
-):
-    """Execute query with exponential backoff retry."""
-    delay = initial_delay
-
-    for attempt in range(max_retries):
-        try:
-            return query_func()
-        except Exception as e:
-            if "timeout" in str(e).lower() or "504" in str(e):
-                if attempt < max_retries - 1:
-                    print(f"Timeout, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(delay)
-                    delay *= backoff_factor
-                else:
-                    print("Max retries reached. Consider reducing query size.")
-                    raise
-            else:
-                raise
+def estimate_org_unit_count(dhis, parent_uid: str) -> int:
+    """Estimate number of org units under a parent."""
+    descendants = dhis.api.get(
+        "organisationUnits",
+        params={
+            "filter": f"path:like:{parent_uid}",
+            "fields": "id",
+            "paging": "false"
+        }
+    )
+    return len(descendants.get("organisationUnits", []))
 
 # Usage
-df = query_with_retry(lambda: dhis.analytics.get(...))
+count = estimate_org_unit_count(dhis, "ImspTQPwCqd")
+print(f"Org units under parent: {count}")
+```
+
+## Expanding Org Units (Replacing children=True)
+
+Instead of `children=True`, expand org units explicitly so the toolbox can batch correctly:
+
+```python
+from openhexa.toolbox.dhis2 import dataframe
+
+def get_org_units_for_query(dhis, level: int = None) -> list:
+    """Get org unit IDs for querying.
+
+    If level is provided, get org units at that level.
+    Otherwise, get all org units up to the max level in the pyramid.
+    """
+    # Get org unit counts to find max level
+    counts = get_org_unit_counts_by_level(dhis)
+    max_level = max(counts.keys())
+
+    # Use provided level or default to max level
+    target_level = level if level is not None else max_level
+
+    # Fetch org units
+    org_units_df = dataframe.get_organisation_units(dhis, max_level=target_level)
+
+    # Filter to target level
+    org_unit_ids = org_units_df.filter(
+        pl.col("level") == target_level
+    )["id"].to_list()
+
+    print(f"Found {len(org_unit_ids)} org units at level {target_level}")
+    return org_unit_ids
+
+# Usage
+# Option 1: Get lowest level (facilities) automatically
+facility_ids = get_org_units_for_query(dhis)
+
+# Option 2: Get specific level (e.g., districts at level 3)
+district_ids = get_org_units_for_query(dhis, level=3)
+
+# Now query - toolbox batches automatically
+df = dataframe.extract_analytics(
+    dhis,
+    data_elements=["de1"],
+    org_units=facility_ids,
+    periods=["202401"]
+)
 ```
 
 ## Complete Example
 
-Fetching 5 years of monthly data for all facilities:
-
 ```python
-import pandas as pd
+from openhexa.sdk import workspace
+from openhexa.toolbox.dhis2 import DHIS2, dataframe
+import polars as pl
 
-# 1. Get all org units at facility level (level 5)
-facilities = get_descendant_org_units(dhis, "country_uid", levels=[5])
-print(f"Total facilities: {len(facilities)}")
+# Setup
+connection = workspace.dhis2_connection("my-dhis2")
+dhis = DHIS2(connection)
 
-# 2. Generate period list
-periods = [f"{year}{month:02d}" for year in range(2019, 2024) for month in range(1, 13)]
-print(f"Total periods: {len(periods)}")
+# Check org unit pyramid
+counts = get_org_unit_counts_by_level(dhis)
+print(f"Org unit pyramid: {counts}")
 
-# 3. Data elements
-data_elements = ["de1", "de2", "de3"]
-print(f"Total data elements: {len(data_elements)}")
+# Tune batch sizes if needed (optional)
+dhis.analytics.MAX_ORG_UNITS = 100
+dhis.analytics.MAX_PERIODS = 4
 
-# 4. Calculate complexity
-complexity = len(facilities) * len(periods) * len(data_elements)
-print(f"Query complexity: {complexity:,}")
+# Get org units explicitly (NOT using children=True)
+district_ids = get_org_units_for_query(dhis, level=3)
 
-# 5. Use adaptive chunking
-df = get_analytics_adaptive(
+# Extract data - toolbox handles batching
+df = dataframe.extract_analytics(
     dhis,
-    data_elements=data_elements,
-    org_units=facilities,
-    periods=periods,
-    max_complexity=10000
+    data_elements=["de1"],
+    org_units=district_ids,
+    periods=["202401"]
 )
 
-print(f"Retrieved {len(df):,} rows")
+print(f"Retrieved {len(df)} rows")
 ```
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| HTTP 502/504 errors | Batch size too large | Reduce MAX_ORG_UNITS and MAX_PERIODS |
+| Query takes forever | Too many batches | Increase MAX_* values (if server can handle) |
+| URL too long (414) | Using children=True | Expand org units explicitly |
+| Memory error | Response too large | Reduce MAX_* values |
 
 ## Quick Reference
 
-| Dimension | Safe Chunk Size | Notes |
-|-----------|-----------------|-------|
-| Org units | 50-100 | Depends on periods/DEs |
-| Periods | 12-24 | Monthly periods |
-| Data elements | 10-20 | With disaggregations |
-| Indicators | 10-20 | Complex formulas cost more |
+| Attribute | Default | Location |
+|-----------|---------|----------|
+| MAX_DATA_ELEMENTS | 50 | `dhis.data_value_sets.MAX_DATA_ELEMENTS` |
+| MAX_ORG_UNITS | 50 | `dhis.data_value_sets.MAX_ORG_UNITS` / `dhis.analytics.MAX_ORG_UNITS` |
+| MAX_PERIODS | 5/1 | `dhis.data_value_sets.MAX_PERIODS` / `dhis.analytics.MAX_PERIODS` |
+| MAX_DX | 50 | `dhis.analytics.MAX_DX` |
 
-| Scenario | Recommended Strategy |
-|----------|---------------------|
-| National data, all facilities | Chunk by org units |
-| 10-year trend, one facility | Chunk by periods |
-| 100+ indicators, few OUs | Chunk by data elements |
-| Unknown size (children=True) | Expand to explicit list first |
+| Scenario | Action |
+|----------|--------|
+| Fast server, want fewer API calls | Increase MAX_* values |
+| Slow server, getting 50X errors | Decrease MAX_* values |
+| Need data for children of an org unit | Use explicit org unit list, NOT children=True |
