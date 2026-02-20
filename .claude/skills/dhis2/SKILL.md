@@ -17,7 +17,7 @@ from openhexa.toolbox.dhis2 import DHIS2
 
 # Get connection and initialize client with caching
 dhis2_connection = workspace.dhis2_connection("connection_identifier")
-dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache")
+dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache") #cache_dir is optionnal! 
 ```
 
 ## Routing Decision Tree
@@ -42,7 +42,6 @@ dhis = DHIS2(dhis2_connection, cache_dir=f"{workspace.files_path}/.cache")
 For analytics and data-values queries, ALWAYS use `dhis2-query-optimization` skill to:
 1. Estimate query complexity
 2. Expand `children=True` to explicit org unit list
-3. Apply chunking if complexity > 10,000
 
 ## Raw API Access
 
