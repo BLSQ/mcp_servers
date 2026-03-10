@@ -1,26 +1,43 @@
 #!/bin/bash
 
 # =============================================================================
-# BLSQ Gemini Skills Installer
+# BLSQ Skills Installer (Claude or Gemini)
 # =============================================================================
-# Run this script from your workspace folder to install/update Gemini skills.
+# Run this script from your workspace folder to install/update skills.
 #
 # Usage:
 #   cd /path/to/your/workspace
-#   ./setup_gemini_skills.sh
+#   ./setup_gemini_skills.sh [agent]
+#
+# Parameters:
+#   agent   - "claude" or "gemini" (default: gemini)
+#
+# Examples:
+#   ./setup_gemini_skills.sh          # Installs to .gemini/skills/
+#   ./setup_gemini_skills.sh gemini   # Installs to .gemini/skills/
+#   ./setup_gemini_skills.sh claude   # Installs to .claude/skills/
 #
 # The script will:
 #   1. Clone the BLSQ repo to a temp folder
-#   2. Copy skills to .claude/skills/ in the current directory
-#   3. If .claude doesn't exist, ask for confirmation before creating it
+#   2. Copy skills to .<agent>/skills/ in the current directory
+#   3. If the folder doesn't exist, ask for confirmation before creating it
 # =============================================================================
 
 set -e
 
+# Parse agent parameter (default: gemini)
+AGENT="${1:-gemini}"
+
+# Validate agent parameter
+if [[ "$AGENT" != "claude" && "$AGENT" != "gemini" ]]; then
+    echo "Error: Invalid agent '$AGENT'. Must be 'claude' or 'gemini'."
+    exit 1
+fi
+
 REPO_URL="https://github.com/BLSQ/mcp_servers.git"
 TEMP_DIR="/tmp/blsq_mcp_servers_$$"
 CURRENT_DIR="$(pwd)"
-DEST_PATH="$CURRENT_DIR/.claude/skills"
+DEST_PATH="$CURRENT_DIR/.$AGENT/skills"
 
 # Cleanup function - ensures temp folder is removed even on error/interrupt
 cleanup() {
@@ -36,18 +53,18 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}  BLSQ Gemini Skills Installer${NC}"
+echo -e "${BLUE}  BLSQ Skills Installer (${AGENT})${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Check if .claude folder exists
-if [ ! -d "$CURRENT_DIR/.claude" ]; then
-    echo -e "${YELLOW}⚠ No .claude folder found in current directory${NC}"
+# Check if agent folder exists
+if [ ! -d "$CURRENT_DIR/.$AGENT" ]; then
+    echo -e "${YELLOW}⚠ No .$AGENT folder found in current directory${NC}"
     echo ""
     echo -e "Current path: ${BLUE}$CURRENT_DIR${NC}"
     echo ""
     echo "Are you in the correct workspace folder?"
-    read -p "Create .claude/skills/ here? [y/N]: " confirm
+    read -p "Create .$AGENT/skills/ here? [y/N]: " confirm
 
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo ""
