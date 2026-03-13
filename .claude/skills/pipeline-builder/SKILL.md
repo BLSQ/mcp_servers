@@ -96,19 +96,19 @@ def etl_pipeline(start_date, limit, include_inactive, regions, dhis2_conn, outpu
 
 ### Parameter Types
 
-| Type | Description |
-|------|-------------|
-| `str` | Text input |
-| `int` | Integer input |
-| `float` | Decimal input |
-| `bool` | Checkbox (True/False) |
-| `DHIS2Connection` | DHIS2 server connection |
-| `IASOConnection` | IASO server connection |
-| `PostgreSQLConnection` | PostgreSQL database |
-| `S3Connection` | S3 bucket connection |
-| `GCSConnection` | Google Cloud Storage |
-| `Dataset` | OpenHEXA dataset |
-| `File` | File browser selection |
+| Type                   | Description             |
+| ---------------------- | ----------------------- |
+| `str`                  | Text input              |
+| `int`                  | Integer input           |
+| `float`                | Decimal input           |
+| `bool`                 | Checkbox (True/False)   |
+| `DHIS2Connection`      | DHIS2 server connection |
+| `IASOConnection`       | IASO server connection  |
+| `PostgreSQLConnection` | PostgreSQL database     |
+| `S3Connection`         | S3 bucket connection    |
+| `GCSConnection`        | Google Cloud Storage    |
+| `Dataset`              | OpenHEXA dataset        |
+| `File`                 | File browser selection  |
 
 ### DHIS2/IASO Widgets
 
@@ -136,27 +136,24 @@ For a pipeline to be schedulable, ALL parameters must be optional:
 - Set `required=False`, OR
 - Set `required=True` AND provide a `default` value
 
-## Tasks with @task
-
-Tasks form a DAG (Directed Acyclic Graph) based on dependencies:
+## Functions
 
 ```python
-@my_pipeline.task
+
 def task_a():
     return "data_a"
 
-@my_pipeline.task
+
 def task_b():
     return "data_b"
 
-@my_pipeline.task
-def task_c(a_result, b_result):  # Waits for task_a and task_b
+def task_c(a_result, b_result): 
     return f"{a_result} + {b_result}"
 
 def my_pipeline():
     a = task_a()
-    b = task_b()      # Runs in parallel with task_a
-    c = task_c(a, b)  # Runs after both complete
+    b = task_b()      
+    c = task_c(a, b) 
 ```
 
 
@@ -164,7 +161,6 @@ def my_pipeline():
 - Return values must be pickleable
 - Pass outputs as individual arguments (not in lists/dicts)
 - Don't do data processing in the main pipeline function
-- It is not mandatory to write tasks in a pipeline. Only if one wants to have parallelized tasks. But it's perfect to have just functions.
 
 ## File I/O
 
@@ -174,7 +170,6 @@ def my_pipeline():
 import pandas as pd
 from openhexa.sdk import workspace
 
-@my_pipeline.task
 def read_data():
     # Read from workspace files
     path = f"{workspace.files_path}/input/data.csv"
@@ -185,7 +180,6 @@ def read_data():
 ### Writing Files
 
 ```python
-@my_pipeline.task
 def save_results(df):
     output_path = f"{workspace.files_path}/output/results.csv"
     df.to_csv(output_path, index=False)
@@ -200,7 +194,7 @@ def save_results(df):
 from sqlalchemy import create_engine
 from openhexa.sdk import workspace, current_run
 
-@my_pipeline.task
+
 def save_to_database(df):
     engine = create_engine(workspace.database_url)
     df.to_sql(
@@ -220,7 +214,7 @@ def save_to_database(df):
 from openhexa.sdk import workspace, DHIS2Connection
 from openhexa.toolbox.dhis2 import DHIS2
 
-@my_pipeline.task
+
 def extract_dhis2(dhis2_conn: DHIS2Connection):
     dhis = DHIS2(dhis2_conn, cache_dir=f"{workspace.files_path}/.cache")
 
@@ -241,7 +235,6 @@ def extract_dhis2(dhis2_conn: DHIS2Connection):
 ```python
 from openhexa.toolbox.iaso import IASO
 
-@my_pipeline.task
 def extract_iaso(iaso_conn):
     iaso = IASO(iaso_conn.url, iaso_conn.username, iaso_conn.password)
 
@@ -258,7 +251,6 @@ def extract_iaso(iaso_conn):
 import psycopg2
 from openhexa.sdk import PostgreSQLConnection
 
-@my_pipeline.task
 def query_postgres(pg_conn: PostgreSQLConnection):
     connection = psycopg2.connect(pg_conn.url)
     with connection.cursor() as cursor:
@@ -271,7 +263,6 @@ def query_postgres(pg_conn: PostgreSQLConnection):
 ```python
 from openhexa.sdk import current_run
 
-@my_pipeline.task
 def my_task():
     current_run.log_debug("Debug details")
     current_run.log_info("Processing started")
@@ -283,7 +274,6 @@ def my_task():
 ## Error Handling
 
 ```python
-@my_pipeline.task
 def safe_extract():
     try:
         data = fetch_external_data()
