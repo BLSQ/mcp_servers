@@ -90,7 +90,6 @@ def dhis2_data_extract(
     current_run.log_info("Pipeline completed successfully")
 
 
-@dhis2_data_extract.task
 def extract_metadata(dhis2_connection: DHIS2Connection) -> dict:
     """Extract metadata for enriching data values."""
     current_run.log_info("Extracting DHIS2 metadata...")
@@ -115,7 +114,6 @@ def extract_metadata(dhis2_connection: DHIS2Connection) -> dict:
         raise
 
 
-@dhis2_data_extract.task
 def extract_data(
     dhis2_connection: DHIS2Connection,
     org_units: list[str] | None,
@@ -150,7 +148,6 @@ def extract_data(
         raise
 
 
-@dhis2_data_extract.task
 def transform_data(data: pd.DataFrame, metadata: dict) -> pd.DataFrame:
     """Transform and enrich data with metadata."""
     current_run.log_info("Transforming data...")
@@ -179,7 +176,6 @@ def transform_data(data: pd.DataFrame, metadata: dict) -> pd.DataFrame:
         raise
 
 
-@dhis2_data_extract.task
 def load_to_database(data: pd.DataFrame, table_name: str) -> None:
     """Load data to the workspace database."""
     current_run.log_info(f"Loading data to database table: {table_name}")
@@ -203,7 +199,6 @@ def load_to_database(data: pd.DataFrame, table_name: str) -> None:
         raise
 
 
-@dhis2_data_extract.task
 def save_to_file(data: pd.DataFrame) -> None:
     """Save data to CSV file."""
     current_run.log_info("Saving data to CSV file...")
